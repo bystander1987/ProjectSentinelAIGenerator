@@ -179,8 +179,8 @@ def process_uploaded_file(file, api_key: str) -> Dict[str, Union[bool, str, FAIS
         logger.error(f"File processing error: {str(e)}")
     
     finally:
-        # 一時ファイルを削除
-        if 'file_path' in locals():
+        # 一時ファイルを削除（存在する場合）
+        if 'file_path' in locals() and os.path.exists(file_path):
             try:
                 os.unlink(file_path)
             except Exception as e:

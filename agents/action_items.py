@@ -25,7 +25,7 @@ def get_action_items_model(api_key: str, language: str = "ja"):
     """
     try:
         model = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash-lite",
             google_api_key=api_key,
             temperature=0.2,
             max_output_tokens=1024,

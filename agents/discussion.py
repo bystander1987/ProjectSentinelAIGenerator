@@ -21,7 +21,7 @@ def get_gemini_model(api_key: str, language: str = "ja"):
     try:
         logger.info(f"Initializing Gemini model with language: {language}")
         return ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",  # より軽量なモデルに変更
+            model="gemini-2.0-flash-lite",  # 要求通りにgemini-2.0-flash-liteを使用
             google_api_key=api_key,
             temperature=0.7,
             max_tokens=300,  # 出力制限を緩和

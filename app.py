@@ -292,6 +292,19 @@ def create_discussion_with_document():
             return jsonify({'error': f'{error_message}'}), 500
 
 
+@app.route('/clear-document', methods=['POST'])
+def clear_document():
+    """セッションからドキュメント情報をクリアする"""
+    try:
+        logger.info("Clearing document from session")
+        session.pop('document_text', None)
+        session.pop('document_uploaded', None)
+        session.pop('document_name', None)
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error clearing document session: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/generate-action-items', methods=['POST'])
 def create_action_items():
     """議論の内容からアクションアイテムを生成する"""
@@ -300,7 +313,7 @@ def create_action_items():
         
         # リクエストデータの取得
         data = request.json
-        discussion_data = data.get('discussion', [])
+        discussion_data = data.get('discussion_data', [])
         language = data.get('language', 'ja')
         
         # 議論データの検証
@@ -323,7 +336,13 @@ def create_action_items():
             return jsonify({'error': f'アクションアイテムの生成に失敗しました: {result.get("error", "不明なエラー")}'}), 500
         
         logger.info("Successfully generated action items")
-        return jsonify({'action_items': result['action_items']})
+        # MarkdownのHTMLへの変換
+        markdown_content = result['action_items']
+        
+        return jsonify({
+            'success': True,
+            'markdown_content': markdown_content
+        })
         
     except Exception as e:
         error_message = str(e)
