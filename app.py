@@ -57,20 +57,23 @@ def create_discussion():
         # より厳格なリソース制限
         total_requests = len(roles) * num_turns
         
-        # ロール数の制限を強化
-        if len(roles) > 4:
+        # ロール数の制限を緩和
+        if len(roles) > 6:
             logger.warning(f"Too many roles: {len(roles)}")
-            return jsonify({'error': 'メモリ使用量削減のため、役割は最大4つまでしか指定できません。'}), 400
+            return jsonify({'error': 'メモリ使用量削減のため、役割は最大6つまでしか指定できません。'}), 400
             
-        # ターン数の上限を緩和
-        if num_turns > 5:
+        # ターン数の上限をさらに緩和
+        if num_turns > 10:
             logger.warning(f"Too many turns: {num_turns}")
-            return jsonify({'error': 'メモリ使用量削減のため、ターン数は最大5までしか指定できません。'}), 400
+            return jsonify({'error': 'メモリ使用量削減のため、ターン数は最大10までしか指定できません。'}), 400
             
-        # 総リクエスト数の制限を緩和
-        if total_requests > 15:  # より緩いリソース使用量の閾値
-            logger.warning(f"High resource request detected: {total_requests} total LLM calls")
+        # 総リクエスト数の制限をさらに緩和
+        if total_requests > 30:  # 非常に緩いリソース使用量の閾値
+            logger.warning(f"Very high resource request detected: {total_requests} total LLM calls")
             return jsonify({'error': 'リソース制限のため、役割数×ターン数の組み合わせが大きすぎます。役割数またはターン数を減らしてください。'}), 400
+        # 高リソース使用量の場合は警告のみ
+        elif total_requests > 20:
+            logger.warning(f"High resource request detected: {total_requests} total LLM calls, proceeding anyway")
         
         # 環境変数からAPIキーを取得
         api_key = os.environ.get('GEMINI_API_KEY')
