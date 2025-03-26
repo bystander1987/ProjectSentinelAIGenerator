@@ -1,8 +1,9 @@
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_community.vectorstores import FAISS
 
 logger = logging.getLogger(__name__)
 
@@ -42,18 +43,19 @@ def get_gemini_model(api_key: str, language: str = "ja"):
         else:
             raise Exception(f"Geminiモデルの初期化エラー: {error_msg}")
 
-def create_role_prompt(role: str, topic: str) -> str:
+def create_role_prompt(role: str, topic: str, context: Optional[str] = None) -> str:
     """
     Create a system prompt for a specific role in the discussion.
     
     Args:
         role (str): The role description
         topic (str): The discussion topic
+        context (Optional[str]): Optional reference document context
         
     Returns:
         str: Formatted prompt for the role
     """
-    return f"""
+    base_prompt = f"""
     あなたは「{role}」として振る舞ってください。
     「{topic}」についてのディスカッションに参加しています。
     
@@ -63,12 +65,25 @@ def create_role_prompt(role: str, topic: str) -> str:
     
     回答は簡潔かつ洞察に富んだものにしてください。長すぎる回答は避けてください。
     """
+    
+    # 参考文書がある場合は追加
+    if context:
+        context_prompt = f"""
+    次の参考文書を考慮に入れて回答してください。この文書に記載されている情報を活用して、適切な発言をしてください。
+    
+    参考文書:
+    {context}
+    """
+        return base_prompt + context_prompt
+    
+    return base_prompt
 
 def agent_response(
     llm, 
     role: str, 
     topic: str, 
-    discussion_history: List[Dict[str, str]]
+    discussion_history: List[Dict[str, str]],
+    vector_store: Optional[FAISS] = None
 ) -> str:
     """
     Generate a response from an agent with a specific role.
@@ -78,11 +93,33 @@ def agent_response(
         role (str): The role of the agent
         topic (str): The discussion topic
         discussion_history (List[Dict[str, str]]): Previous discussion turns
+        vector_store (Optional[FAISS]): Optional vector store for RAG
         
     Returns:
         str: The agent's response
     """
-    system_prompt = create_role_prompt(role, topic)
+    # RAGから関連コンテキストを取得（存在する場合）
+    context = None
+    if vector_store:
+        try:
+            # 直近の会話と役割から検索クエリを作成
+            recent_history_text = ""
+            if discussion_history:
+                for message in discussion_history[-3:]:  # 直近3つのメッセージを使用
+                    recent_history_text += f"{message['content']} "
+            
+            search_query = f"{topic} {role} {recent_history_text}"
+            # 関連ドキュメントを検索
+            from agents.document_processor import search_documents, create_context_from_documents
+            relevant_docs = search_documents(vector_store, search_query, top_k=3)
+            if relevant_docs:
+                context = create_context_from_documents(relevant_docs, max_tokens=1000)
+                logger.info(f"Retrieved relevant context for {role}")
+        except Exception as e:
+            logger.warning(f"Failed to retrieve context from vector store: {str(e)}")
+    
+    # コンテキスト付きのプロンプトを作成
+    system_prompt = create_role_prompt(role, topic, context)
     
     # メモリ使用量削減のため、直近の会話履歴のみ含める
     recent_history = []
@@ -144,7 +181,8 @@ def generate_discussion(
     topic: str,
     roles: List[str],
     num_turns: int = 3,
-    language: str = "ja"
+    language: str = "ja",
+    vector_store: Optional[FAISS] = None
 ) -> List[Dict[str, str]]:
     """
     Generate a multi-turn discussion between agents with different roles.
@@ -155,6 +193,7 @@ def generate_discussion(
         roles (List[str]): List of roles for the agents
         num_turns (int): Number of conversation turns
         language (str): Output language code (default: "ja")
+        vector_store (Optional[FAISS]): Optional vector store for RAG
         
     Returns:
         List[Dict[str, str]]: Generated discussion data
@@ -162,6 +201,9 @@ def generate_discussion(
     try:
         # 全体的なメモリ使用量を減らすため、小さな機能のかたまりに分割
         logger.info(f"Starting discussion generation: {topic}, Roles: {roles}, Turns: {num_turns}")
+        if vector_store:
+            logger.info("RAG enabled: Using uploaded document as reference")
+        
         llm = get_gemini_model(api_key, language)
         discussion = []
         total_roles = len(roles)
@@ -172,7 +214,7 @@ def generate_discussion(
         logger.info("Generating initial responses")
         for i, role in enumerate(roles):
             logger.info(f"Generating response for {role} ({i+1}/{total_roles})")
-            response = agent_response(llm, role, topic, discussion)
+            response = agent_response(llm, role, topic, discussion, vector_store)
             discussion.append({
                 "role": role,
                 "content": response
@@ -187,7 +229,7 @@ def generate_discussion(
                     logger.info(f"Turn {turn+1}, Role {role} ({current_iteration}/{total_iterations})")
                     
                     # レスポンスを生成
-                    response = agent_response(llm, role, topic, discussion)
+                    response = agent_response(llm, role, topic, discussion, vector_store)
                     discussion.append({
                         "role": role,
                         "content": response

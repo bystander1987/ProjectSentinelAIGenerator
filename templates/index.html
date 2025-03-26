@@ -80,7 +80,10 @@
                             
                             <div class="d-grid gap-2">
                                 <button type="submit" class="btn btn-primary" id="generateBtn">
-                                    ディスカッションを生成
+                                    <i class="bi bi-play-fill"></i> ディスカッションを生成
+                                </button>
+                                <button type="button" class="btn btn-success" id="generateWithDocBtn" disabled>
+                                    <i class="bi bi-file-earmark-play"></i> 文書を参照して生成
                                 </button>
                             </div>
                         </form>
@@ -111,6 +114,35 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- 文書アップロードパネル -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">参考文書アップロード</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="documentUploadForm">
+                            <div class="mb-3">
+                                <label for="documentFile" class="form-label">議論の参考となる文書をアップロード</label>
+                                <input class="form-control" type="file" id="documentFile" accept=".pdf,.txt,.docx">
+                                <div class="form-text">サポート形式: PDF, TXT, DOCX (最大5MB)</div>
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-outline-secondary" id="uploadDocumentBtn">
+                                    <i class="bi bi-upload"></i> アップロード
+                                </button>
+                            </div>
+                        </form>
+                        <div id="documentUploadStatus" class="alert alert-success mt-3 d-none">
+                            <i class="bi bi-check-circle"></i> 
+                            <span id="uploadedFileName"></span>が正常に処理されました。
+                        </div>
+                        <div id="documentUploadError" class="alert alert-danger mt-3 d-none">
+                            <i class="bi bi-exclamation-triangle"></i> 
+                            <span id="documentErrorMessage"></span>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <!-- ディスカッション表示エリア -->
@@ -119,6 +151,9 @@
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0" id="discussionTopicHeader">ディスカッション</h5>
                         <div>
+                            <button class="btn btn-sm btn-outline-secondary me-1" id="generateActionItems" disabled>
+                                <i class="bi bi-list-check"></i> アクションアイテム生成
+                            </button>
                             <button class="btn btn-sm btn-outline-secondary me-1" id="exportText" disabled>
                                 <i class="bi bi-file-earmark-text"></i> テキスト出力
                             </button>
@@ -128,21 +163,40 @@
                         </div>
                     </div>
                     <div class="card-body">
+                        <div id="documentInfo" class="alert alert-info mb-3 d-none">
+                            <i class="bi bi-file-earmark-text"></i> 参考文書: <span id="documentName"></span>
+                            <button type="button" class="btn-close float-end" aria-label="閉じる" id="clearDocument"></button>
+                        </div>
+                        
                         <div id="loadingIndicator" class="text-center p-5 d-none">
                             <div class="spinner-border text-primary" role="status">
                                 <span class="visually-hidden">読み込み中...</span>
                             </div>
                             <p class="mt-3">ディスカッションを生成中... 少々お待ちください。</p>
                         </div>
+                        
+                        <div id="actionItemsLoadingIndicator" class="text-center p-5 d-none">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">読み込み中...</span>
+                            </div>
+                            <p class="mt-3">アクションアイテムを生成中... 少々お待ちください。</p>
+                        </div>
+                        
                         <div id="errorDisplay" class="alert alert-danger d-none" role="alert">
                             <i class="bi bi-exclamation-triangle"></i> 
                             <span id="errorMessage"></span>
                         </div>
+                        
                         <div id="discussionContainer" class="mt-3">
                             <div class="text-center text-muted py-5">
                                 <i class="bi bi-chat-square-text fs-1"></i>
                                 <p class="mt-3">役割とテーマを設定し、ディスカッションを生成してください</p>
                             </div>
+                        </div>
+                        
+                        <div id="actionItemsContainer" class="mt-4 d-none">
+                            <h4 class="border-bottom pb-2 mb-3">アクションアイテム一覧</h4>
+                            <div id="actionItemsContent" class="markdown-content"></div>
                         </div>
                     </div>
                 </div>
