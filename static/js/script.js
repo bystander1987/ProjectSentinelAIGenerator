@@ -71,13 +71,17 @@ document.addEventListener('DOMContentLoaded', function() {
         hideError();
         
         // Update header
-        discussionTopicHeader.textContent = `Discussion: ${topic}`;
+        discussionTopicHeader.textContent = `ディスカッション: ${topic}`;
+        
+        // Get selected language
+        const language = document.getElementById('language').value;
         
         // Prepare request data
         const requestData = {
             topic: topic,
             roles: roles,
-            num_turns: numTurns
+            num_turns: numTurns,
+            language: language
         };
         
         // Send request to server
@@ -102,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => {
             showLoading(false);
-            showError(`Error: ${error.message}`);
+            showError(`エラー: ${error.message}`);
             console.error('Error generating discussion:', error);
         });
     }

@@ -22,42 +22,44 @@ def create_discussion():
         topic = data.get('topic', '')
         num_turns = int(data.get('num_turns', 3))
         roles = data.get('roles', [])
+        language = data.get('language', 'en')  # 言語設定を取得 (デフォルトは英語)
         
-        # Validate input
+        # 入力検証
         if not topic:
-            return jsonify({'error': 'Topic is required'}), 400
+            return jsonify({'error': '議題を入力してください'}), 400
         
         if not roles or len(roles) < 2:
-            return jsonify({'error': 'At least two roles are required'}), 400
+            return jsonify({'error': '少なくとも2つの役割が必要です'}), 400
             
         if num_turns < 1 or num_turns > 10:
-            return jsonify({'error': 'Number of turns must be between 1 and 10'}), 400
+            return jsonify({'error': 'ターン数は1から10の間で指定してください'}), 400
         
-        # Get API key from environment
+        # 環境変数からAPIキーを取得
         api_key = os.environ.get('GEMINI_API_KEY')
         if not api_key:
-            return jsonify({'error': 'API key not configured'}), 500
+            return jsonify({'error': 'APIキーが設定されていません'}), 500
             
-        # Try to initialize the Gemini model to check API key validity
+        # Geminiモデルを初期化してAPIキーの有効性を確認
         try:
-            get_gemini_model(api_key)
+            get_gemini_model(api_key, language)
         except Exception as e:
             logger.error(f"Failed to initialize Gemini model: {str(e)}")
-            return jsonify({'error': 'Failed to initialize AI model. Check API key.'}), 500
+            return jsonify({'error': 'AIモデルの初期化に失敗しました。APIキーを確認してください。'}), 500
         
-        # Generate the discussion
+        # ディスカッションを生成
         discussion_data = generate_discussion(
             api_key=api_key,
             topic=topic,
             roles=roles,
-            num_turns=num_turns
+            num_turns=num_turns,
+            language=language
         )
         
         return jsonify({'discussion': discussion_data})
     
     except Exception as e:
         logger.error(f"Error generating discussion: {str(e)}")
-        return jsonify({'error': f'Failed to generate discussion: {str(e)}'}), 500
+        return jsonify({'error': f'{str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

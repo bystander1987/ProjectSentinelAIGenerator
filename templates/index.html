@@ -1,73 +1,86 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="ja" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM Role-Based Discussion Generator</title>
+    <title>LLM ロールベース・ディスカッション生成ツール</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <!-- Navigation -->
+    <!-- ナビゲーション -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="#">
-                <i class="bi bi-robot"></i> LLM Discussion Generator
+                <i class="bi bi-robot"></i> LLM ディスカッション生成ツール
             </a>
         </div>
     </nav>
 
-    <!-- Main Container -->
+    <!-- メインコンテナ -->
     <div class="container my-4">
         <div class="row">
-            <!-- Configuration Panel -->
+            <!-- 設定パネル -->
             <div class="col-md-4">
                 <div class="card mb-4">
                     <div class="card-header">
-                        <h5 class="mb-0">Discussion Configuration</h5>
+                        <h5 class="mb-0">ディスカッション設定</h5>
                     </div>
                     <div class="card-body">
                         <form id="discussionForm">
                             <div class="mb-3">
-                                <label for="topic" class="form-label">Discussion Topic</label>
+                                <label for="topic" class="form-label">ディスカッションのテーマ</label>
                                 <input type="text" class="form-control" id="topic" 
-                                    placeholder="Enter a discussion topic" required>
+                                    placeholder="ディスカッションのテーマを入力" required>
                             </div>
                             
                             <div class="mb-3">
-                                <label for="numTurns" class="form-label">Number of Turns</label>
+                                <label for="numTurns" class="form-label">ターン数</label>
                                 <input type="number" class="form-control" id="numTurns" 
                                     min="1" max="10" value="3">
-                                <div class="form-text">Each role will speak once per turn (1-10)</div>
+                                <div class="form-text">各役割は1ターンにつき1回発言します (1-10)</div>
                             </div>
                             
                             <div class="mb-3">
-                                <label class="form-label">Participant Roles</label>
+                                <label class="form-label">参加者の役割</label>
                                 <div id="rolesContainer">
                                     <div class="input-group mb-2">
                                         <input type="text" class="form-control role-input" 
-                                            placeholder="Role description" required>
+                                            placeholder="役割の説明" required>
                                         <button class="btn btn-outline-danger remove-role-btn" type="button" disabled>
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
                                     <div class="input-group mb-2">
                                         <input type="text" class="form-control role-input" 
-                                            placeholder="Role description" required>
+                                            placeholder="役割の説明" required>
                                         <button class="btn btn-outline-danger remove-role-btn" type="button" disabled>
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
                                 </div>
                                 <button type="button" class="btn btn-outline-secondary btn-sm" id="addRoleBtn">
-                                    <i class="bi bi-plus-circle"></i> Add Role
+                                    <i class="bi bi-plus-circle"></i> 役割を追加
                                 </button>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="language" class="form-label">出力言語</label>
+                                <select class="form-select" id="language">
+                                    <option value="ja" selected>日本語</option>
+                                    <option value="en">英語</option>
+                                    <option value="zh">中国語</option>
+                                    <option value="ko">韓国語</option>
+                                    <option value="fr">フランス語</option>
+                                    <option value="de">ドイツ語</option>
+                                    <option value="es">スペイン語</option>
+                                </select>
                             </div>
                             
                             <div class="d-grid gap-2">
                                 <button type="submit" class="btn btn-primary" id="generateBtn">
-                                    Generate Discussion
+                                    ディスカッションを生成
                                 </button>
                             </div>
                         </form>
@@ -76,50 +89,50 @@
                 
                 <div class="card mb-4">
                     <div class="card-header">
-                        <h5 class="mb-0">Examples</h5>
+                        <h5 class="mb-0">サンプル</h5>
                     </div>
                     <div class="card-body">
                         <div class="list-group">
                             <button type="button" class="list-group-item list-group-item-action example-topic" 
-                                data-topic="Climate Change" 
-                                data-roles='["Environmental scientist", "Oil company executive", "Climate activist"]'>
-                                Climate Change Debate
+                                data-topic="気候変動" 
+                                data-roles='["環境科学者", "石油会社重役", "気候活動家"]'>
+                                気候変動ディベート
                             </button>
                             <button type="button" class="list-group-item list-group-item-action example-topic" 
-                                data-topic="Artificial Intelligence Ethics" 
-                                data-roles='["AI researcher", "Philosopher", "Tech industry CEO", "Human rights activist"]'>
-                                AI Ethics Discussion
+                                data-topic="人工知能の倫理" 
+                                data-roles='["AI研究者", "哲学者", "テック企業CEO", "人権活動家"]'>
+                                AI倫理ディスカッション
                             </button>
                             <button type="button" class="list-group-item list-group-item-action example-topic" 
-                                data-topic="Universal Basic Income" 
-                                data-roles='["Economist", "Social worker", "Conservative politician", "Tech entrepreneur"]'>
-                                Universal Basic Income
+                                data-topic="ベーシックインカム" 
+                                data-roles='["経済学者", "ソーシャルワーカー", "保守派政治家", "テック起業家"]'>
+                                ベーシックインカム
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <!-- Discussion Display -->
+            <!-- ディスカッション表示エリア -->
             <div class="col-md-8">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0" id="discussionTopicHeader">Discussion</h5>
+                        <h5 class="mb-0" id="discussionTopicHeader">ディスカッション</h5>
                         <div>
                             <button class="btn btn-sm btn-outline-secondary me-1" id="exportText" disabled>
-                                <i class="bi bi-file-earmark-text"></i> Export Text
+                                <i class="bi bi-file-earmark-text"></i> テキスト出力
                             </button>
                             <button class="btn btn-sm btn-outline-secondary" id="copyText" disabled>
-                                <i class="bi bi-clipboard"></i> Copy
+                                <i class="bi bi-clipboard"></i> コピー
                             </button>
                         </div>
                     </div>
                     <div class="card-body">
                         <div id="loadingIndicator" class="text-center p-5 d-none">
                             <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
+                                <span class="visually-hidden">読み込み中...</span>
                             </div>
-                            <p class="mt-3">Generating discussion... This may take a minute.</p>
+                            <p class="mt-3">ディスカッションを生成中... 少々お待ちください。</p>
                         </div>
                         <div id="errorDisplay" class="alert alert-danger d-none" role="alert">
                             <i class="bi bi-exclamation-triangle"></i> 
@@ -128,7 +141,7 @@
                         <div id="discussionContainer" class="mt-3">
                             <div class="text-center text-muted py-5">
                                 <i class="bi bi-chat-square-text fs-1"></i>
-                                <p class="mt-3">Configure roles and a topic, then generate a discussion</p>
+                                <p class="mt-3">役割とテーマを設定し、ディスカッションを生成してください</p>
                             </div>
                         </div>
                     </div>

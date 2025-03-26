@@ -6,12 +6,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 logger = logging.getLogger(__name__)
 
-def get_gemini_model(api_key: str):
+def get_gemini_model(api_key: str, language: str = "en"):
     """
     Initialize and return a Gemini model instance.
     
     Args:
         api_key (str): Google Gemini API key
+        language (str): Output language (default: "en")
         
     Returns:
         ChatGoogleGenerativeAI: Initialized model
@@ -19,7 +20,8 @@ def get_gemini_model(api_key: str):
     return ChatGoogleGenerativeAI(
         model="gemini-1.5-pro",
         google_api_key=api_key,
-        temperature=0.7
+        temperature=0.7,
+        generation_config={"language": language}
     )
 
 def create_role_prompt(role: str, topic: str) -> str:
@@ -93,7 +95,8 @@ def generate_discussion(
     api_key: str,
     topic: str,
     roles: List[str],
-    num_turns: int = 3
+    num_turns: int = 3,
+    language: str = "en"
 ) -> List[Dict[str, str]]:
     """
     Generate a multi-turn discussion between agents with different roles.
@@ -103,12 +106,13 @@ def generate_discussion(
         topic (str): The discussion topic
         roles (List[str]): List of roles for the agents
         num_turns (int): Number of conversation turns
+        language (str): Output language code (default: "en")
         
     Returns:
         List[Dict[str, str]]: Generated discussion data
     """
     try:
-        llm = get_gemini_model(api_key)
+        llm = get_gemini_model(api_key, language)
         discussion = []
         
         # Generate the initial prompt for each role to kick off the discussion
@@ -132,4 +136,8 @@ def generate_discussion(
     
     except Exception as e:
         logger.error(f"Error in generate_discussion: {str(e)}")
-        raise Exception(f"Failed to generate discussion: {str(e)}")
+        error_message = str(e)
+        # APIクォータに関するエラーの場合は、より友好的なメッセージを表示
+        if "quota" in error_message.lower() or "429" in error_message:
+            raise Exception("APIのリクエスト制限に達しました。しばらく待ってから再試行してください。")
+        raise Exception(f"ディスカッションの生成に失敗しました: {error_message}")
