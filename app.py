@@ -43,8 +43,15 @@ def create_discussion():
         try:
             get_gemini_model(api_key, language)
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini model: {str(e)}")
-            return jsonify({'error': 'AIモデルの初期化に失敗しました。APIキーを確認してください。'}), 500
+            error_msg = str(e)
+            logger.error(f"Failed to initialize Gemini model: {error_msg}")
+            
+            if "quota" in error_msg.lower() or "429" in error_msg:
+                return jsonify({'error': 'APIのリクエスト制限に達しました。しばらく待ってから再試行してください。'}), 429
+            elif "key" in error_msg.lower() or "auth" in error_msg.lower() or "401" in error_msg:
+                return jsonify({'error': 'APIキーが無効です。有効なAPIキーを設定してください。'}), 401
+            else:
+                return jsonify({'error': 'AIモデルの初期化に失敗しました。エラー: ' + error_msg}), 500
         
         # ディスカッションを生成
         discussion_data = generate_discussion(

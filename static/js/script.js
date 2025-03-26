@@ -261,6 +261,22 @@ document.addEventListener('DOMContentLoaded', function() {
     function showError(message) {
         errorMessage.textContent = message;
         errorDisplay.classList.remove('d-none');
+        
+        // APIキーエラーの場合、詳細を追加
+        if (message.includes('APIキー') || message.includes('API key')) {
+            const helpText = document.createElement('div');
+            helpText.className = 'mt-2';
+            helpText.innerHTML = '<small>Google Gemini APIキーが必要です。<a href="https://ai.google.dev/tutorials/setup" target="_blank">こちら</a>から取得できます。</small>';
+            errorMessage.appendChild(helpText);
+        }
+        
+        // クォータ制限の場合の説明を追加
+        if (message.includes('リクエスト制限') || message.includes('quota')) {
+            const helpText = document.createElement('div');
+            helpText.className = 'mt-2';
+            helpText.innerHTML = '<small>API利用制限に達しました。しばらく待つか、別のAPIキーを使用してください。</small>';
+            errorMessage.appendChild(helpText);
+        }
     }
     
     function hideError() {
