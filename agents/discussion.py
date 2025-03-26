@@ -6,24 +6,41 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 logger = logging.getLogger(__name__)
 
-def get_gemini_model(api_key: str, language: str = "en"):
+def get_gemini_model(api_key: str, language: str = "ja"):
     """
     Initialize and return a Gemini model instance.
     
     Args:
         api_key (str): Google Gemini API key
-        language (str): Output language (default: "en")
+        language (str): Output language (default: "ja")
         
     Returns:
         ChatGoogleGenerativeAI: Initialized model
     """
-    return ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro",
-        google_api_key=api_key,
-        temperature=0.7,
-        max_tokens=300,  # トークン数を制限してメモリ使用量を削減
-        generation_config={"language": language}
-    )
+    try:
+        logger.info(f"Initializing Gemini model with language: {language}")
+        return ChatGoogleGenerativeAI(
+            model="gemini-1.5-pro",  # 最新のGeminiモデルを使用
+            google_api_key=api_key,
+            temperature=0.7,
+            max_tokens=200,  # より少ないトークン数に制限
+            max_retries=2,   # リトライ回数を制限
+            timeout=20,      # タイムアウトを設定
+            generation_config={"language": language}
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Failed to initialize Gemini model: {error_msg}")
+        
+        # 詳細なエラーメッセージを生成
+        if "quota" in error_msg.lower() or "429" in error_msg:
+            raise Exception("APIのリクエスト制限に達しました。時間を置いて再度お試しください。")
+        elif "authentication" in error_msg.lower() or "auth" in error_msg.lower():
+            raise Exception("APIキー認証エラー：APIキーが無効または期限切れです。")
+        elif "key" in error_msg.lower():
+            raise Exception("APIキーエラー：有効なAPIキーを設定してください。")
+        else:
+            raise Exception(f"Geminiモデルの初期化エラー: {error_msg}")
 
 def create_role_prompt(role: str, topic: str) -> str:
     """
@@ -75,12 +92,13 @@ def agent_response(
     
     # Prepare the prompt for the agent
     prompt = f"""
-    The discussion topic is: {topic}
+    ディスカッションのテーマ: {topic}
     
-    Previous discussion:
+    これまでの議論:
     {history_text}
     
-    As {role}, provide your next contribution to this discussion.
+    「{role}」として、このディスカッションに次の発言をしてください。
+    重要: 回答は短く、最大200文字以内に収めてください。
     """
     
     try:
@@ -99,7 +117,7 @@ def generate_discussion(
     topic: str,
     roles: List[str],
     num_turns: int = 3,
-    language: str = "en"
+    language: str = "ja"
 ) -> List[Dict[str, str]]:
     """
     Generate a multi-turn discussion between agents with different roles.
@@ -109,7 +127,7 @@ def generate_discussion(
         topic (str): The discussion topic
         roles (List[str]): List of roles for the agents
         num_turns (int): Number of conversation turns
-        language (str): Output language code (default: "en")
+        language (str): Output language code (default: "ja")
         
     Returns:
         List[Dict[str, str]]: Generated discussion data
