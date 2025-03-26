@@ -17,7 +17,7 @@ def get_gemini_model(api_key: str):
         ChatGoogleGenerativeAI: Initialized model
     """
     return ChatGoogleGenerativeAI(
-        model="gemini-pro",
+        model="gemini-1.5-pro",
         google_api_key=api_key,
         temperature=0.7
     )
