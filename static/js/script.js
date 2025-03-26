@@ -84,31 +84,59 @@ document.addEventListener('DOMContentLoaded', function() {
             language: language
         };
         
-        // Send request to server
-        fetch('/generate-discussion', {
+        // タイムアウト処理を追加
+        const timeoutDuration = 120000; // 120秒
+        let timeoutId;
+        
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error('リクエストがタイムアウトしました。少ないロール数やターン数で再試行してください。'));
+            }, timeoutDuration);
+        });
+        
+        // リクエスト送信
+        const fetchPromise = fetch('/generate-discussion', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(requestData)
-        })
-        .then(response => response.json())
-        .then(data => {
-            showLoading(false);
-            
-            if (data.error) {
-                showError(data.error);
-                return;
-            }
-            
-            displayDiscussion(data.discussion, topic);
-            enableExportButtons();
-        })
-        .catch(error => {
-            showLoading(false);
-            showError(`エラー: ${error.message}`);
-            console.error('Error generating discussion:', error);
         });
+        
+        // リクエストとタイムアウトを競合
+        Promise.race([fetchPromise, timeoutPromise])
+            .then(response => {
+                clearTimeout(timeoutId);
+                
+                // レスポンスのステータスコードをチェック
+                if (!response.ok) {
+                    // エラーメッセージを取得
+                    return response.json().then(errorData => {
+                        throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                showLoading(false);
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                displayDiscussion(data.discussion, topic);
+                enableExportButtons();
+            })
+            .catch(error => {
+                clearTimeout(timeoutId);
+                showLoading(false);
+                
+                // エラーメッセージを表示
+                let errorMsg = error.message || 'ディスカッションの生成中にエラーが発生しました';
+                showError(errorMsg);
+                console.error('Error generating discussion:', error);
+            });
     }
     
     function displayDiscussion(discussion, topic) {
@@ -259,24 +287,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function showError(message) {
-        errorMessage.textContent = message;
+        // コンテナをクリア
+        errorMessage.innerHTML = '';
+        
+        // メインメッセージを追加
+        const mainMsg = document.createElement('div');
+        mainMsg.textContent = message;
+        errorMessage.appendChild(mainMsg);
+        
+        // エラータイプに基づいた追加情報
+        let helpText = document.createElement('div');
+        helpText.className = 'mt-2 small';
+        
+        // APIキーエラーの場合
+        if (message.includes('APIキー') || message.includes('API key') || message.includes('認証エラー')) {
+            helpText.innerHTML = '<strong>APIキーの問題:</strong> Google Gemini APIキーが必要です。<a href="https://ai.google.dev/tutorials/setup" target="_blank">こちら</a>から取得して、プロジェクトの環境変数に設定してください。';
+        }
+        // クォータ制限エラーの場合
+        else if (message.includes('リクエスト制限') || message.includes('quota') || message.includes('429')) {
+            helpText.innerHTML = '<strong>API制限エラー:</strong> Google Gemini APIの無料枠制限に達しました。時間をおいて再試行するか、新しいプロジェクトでAPIキーを取得してください。';
+        }
+        // メモリ/リソースエラーの場合
+        else if (message.includes('リソース制限') || message.includes('memory')) {
+            helpText.innerHTML = '<strong>リソース制限:</strong> 役割の数やターン数を減らして再試行してください。多すぎるとメモリ不足になる可能性があります。';
+        }
+        // その他のエラー
+        else {
+            helpText.innerHTML = '<strong>エラー詳細:</strong> サーバーでエラーが発生しました。別のトピックや設定で再試行してください。';
+        }
+        
+        errorMessage.appendChild(helpText);
         errorDisplay.classList.remove('d-none');
         
-        // APIキーエラーの場合、詳細を追加
-        if (message.includes('APIキー') || message.includes('API key')) {
-            const helpText = document.createElement('div');
-            helpText.className = 'mt-2';
-            helpText.innerHTML = '<small>Google Gemini APIキーが必要です。<a href="https://ai.google.dev/tutorials/setup" target="_blank">こちら</a>から取得できます。</small>';
-            errorMessage.appendChild(helpText);
-        }
-        
-        // クォータ制限の場合の説明を追加
-        if (message.includes('リクエスト制限') || message.includes('quota')) {
-            const helpText = document.createElement('div');
-            helpText.className = 'mt-2';
-            helpText.innerHTML = '<small>API利用制限に達しました。しばらく待つか、別のAPIキーを使用してください。</small>';
-            errorMessage.appendChild(helpText);
-        }
+        // エラーログ
+        console.error('Error generating discussion:', message);
     }
     
     function hideError() {

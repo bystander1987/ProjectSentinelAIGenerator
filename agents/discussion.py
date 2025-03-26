@@ -21,6 +21,7 @@ def get_gemini_model(api_key: str, language: str = "en"):
         model="gemini-1.5-pro",
         google_api_key=api_key,
         temperature=0.7,
+        max_tokens=300,  # トークン数を制限してメモリ使用量を削減
         generation_config={"language": language}
     )
 
@@ -36,12 +37,14 @@ def create_role_prompt(role: str, topic: str) -> str:
         str: Formatted prompt for the role
     """
     return f"""
-    You are roleplaying as {role}. 
-    You are participating in a discussion about: {topic}.
+    あなたは「{role}」として振る舞ってください。
+    「{topic}」についてのディスカッションに参加しています。
     
-    Express opinions, ask questions, and respond to other participants in a way that is authentic to your role.
-    Keep your responses concise (2-3 sentences) but insightful.
-    Do not break character under any circumstances.
+    あなたの役割に合った意見を述べ、質問し、他の参加者に応答してください。
+    回答は簡潔（2〜3文）かつ洞察に富んだものにしてください。
+    どのような状況でも役柄から外れないでください。
+    
+    重要: メモリの使用量を減らすため、回答は最大200文字以内に収めてください。
     """
 
 def agent_response(
@@ -112,32 +115,55 @@ def generate_discussion(
         List[Dict[str, str]]: Generated discussion data
     """
     try:
+        # 全体的なメモリ使用量を減らすため、小さな機能のかたまりに分割
+        logger.info(f"Starting discussion generation: {topic}, Roles: {roles}, Turns: {num_turns}")
         llm = get_gemini_model(api_key, language)
         discussion = []
+        total_roles = len(roles)
+        total_iterations = total_roles * num_turns
         
-        # Generate the initial prompt for each role to kick off the discussion
-        for role in roles:
+        # 1つずつ生成してメモリを管理
+        # 各役割の最初の応答を生成
+        logger.info("Generating initial responses")
+        for i, role in enumerate(roles):
+            logger.info(f"Generating response for {role} ({i+1}/{total_roles})")
             response = agent_response(llm, role, topic, discussion)
             discussion.append({
                 "role": role,
                 "content": response
             })
         
-        # Generate subsequent turns
-        for _ in range(num_turns - 1):
-            for role in roles:
-                response = agent_response(llm, role, topic, discussion)
-                discussion.append({
-                    "role": role,
-                    "content": response
-                })
+        # 後続のターンを生成
+        if num_turns > 1:
+            logger.info(f"Generating {num_turns-1} additional turns")
+            for turn in range(1, num_turns):
+                for i, role in enumerate(roles):
+                    current_iteration = (turn * total_roles) + i + 1
+                    logger.info(f"Turn {turn+1}, Role {role} ({current_iteration}/{total_iterations})")
+                    
+                    # レスポンスを生成
+                    response = agent_response(llm, role, topic, discussion)
+                    discussion.append({
+                        "role": role,
+                        "content": response
+                    })
         
         return discussion
     
     except Exception as e:
         logger.error(f"Error in generate_discussion: {str(e)}")
         error_message = str(e)
-        # APIクォータに関するエラーの場合は、より友好的なメッセージを表示
-        if "quota" in error_message.lower() or "429" in error_message:
+        
+        # より詳細なエラー診断
+        if "quota" in error_message.lower() or "429" in error_message or "limit" in error_message.lower():
+            logger.error("API rate limit or quota exceeded")
             raise Exception("APIのリクエスト制限に達しました。しばらく待ってから再試行してください。")
-        raise Exception(f"ディスカッションの生成に失敗しました: {error_message}")
+        elif "permission" in error_message.lower() or "access" in error_message.lower() or "auth" in error_message.lower():
+            logger.error("API authentication or permission error")
+            raise Exception("APIの認証エラー：APIキーの権限をご確認ください。")
+        elif "memory" in error_message.lower() or "resource" in error_message.lower():
+            logger.error("Memory or resource limitation error")
+            raise Exception("リソース制限エラー：少ないロール数や少ないターン数でお試しください。")
+        else:
+            logger.error(f"Unknown error: {error_message}")
+            raise Exception(f"ディスカッションの生成に失敗しました: {error_message}")
