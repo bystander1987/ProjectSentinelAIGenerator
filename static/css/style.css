@@ -1,0 +1,80 @@
+/* Additional custom styles */
+
+.discussion-bubble {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 1rem;
+    position: relative;
+}
+
+.discussion-bubble::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    border: 10px solid transparent;
+}
+
+.discussion-bubble.left {
+    margin-right: 2rem;
+    background-color: var(--bs-dark);
+}
+
+.discussion-bubble.left::after {
+    top: 18px;
+    left: 100%;
+    border-left-color: var(--bs-dark);
+}
+
+.discussion-bubble.right {
+    margin-left: 2rem;
+    background-color: var(--bs-primary);
+}
+
+.discussion-bubble.right::after {
+    top: 18px;
+    right: 100%;
+    border-right-color: var(--bs-primary);
+}
+
+.role-tag {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+}
+
+.role-container {
+    margin-bottom: 1.5rem;
+}
+
+.role-input {
+    height: calc(1.5em + 0.75rem + 2px);
+}
+
+#discussionContainer {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.clickable {
+    cursor: pointer;
+}
+
+/* Alternate bubble coloring */
+.discussion-bubble:nth-child(odd) {
+    background-color: var(--bs-secondary);
+    color: var(--bs-light);
+}
+
+.discussion-bubble:nth-child(even) {
+    background-color: var(--bs-dark);
+    color: var(--bs-light);
+}
+
+.discussion-bubble:nth-child(odd)::after {
+    border-left-color: var(--bs-secondary);
+}
+
+.discussion-bubble:nth-child(even)::after {
+    border-right-color: var(--bs-dark);
+}
