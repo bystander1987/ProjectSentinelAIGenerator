@@ -23,9 +23,9 @@ def get_gemini_model(api_key: str, language: str = "ja"):
             model="gemini-1.5-flash",  # より軽量なモデルに変更
             google_api_key=api_key,
             temperature=0.7,
-            max_tokens=100,  # さらにトークン数を制限
-            max_retries=1,   # リトライ回数を最小に
-            timeout=10,      # タイムアウトを短く設定
+            max_tokens=300,  # 出力制限を緩和
+            max_retries=2,   # リトライ回数を増加
+            timeout=15,      # タイムアウトを長めに設定
             generation_config={"language": language}
         )
     except Exception as e:
@@ -61,7 +61,7 @@ def create_role_prompt(role: str, topic: str) -> str:
     回答は簡潔（2〜3文）かつ洞察に富んだものにしてください。
     どのような状況でも役柄から外れないでください。
     
-    重要: メモリの使用量を減らすため、回答は最大100文字以内に収めてください。
+    回答は簡潔かつ洞察に富んだものにしてください。長すぎる回答は避けてください。
     """
 
 def agent_response(
@@ -105,7 +105,7 @@ def agent_response(
     {history_text}
     
     「{role}」として、このディスカッションに次の発言をしてください。
-    重要: 回答は非常に短く、100文字以内に収めてください。
+    重要: 回答は簡潔かつ分かりやすくしてください。
     """
     
     try:
@@ -119,10 +119,11 @@ def agent_response(
         
         response = llm.invoke(messages)
         
-        # 文字数制限を強制
+        # 文字数制限（非常に長い場合のみ適用）
         content = response.content
-        if len(content) > 150:
-            content = content[:147] + "..."
+        # より長い文字数を許容
+        if len(content) > 500:
+            content = content[:497] + "..."
             
         return content
         

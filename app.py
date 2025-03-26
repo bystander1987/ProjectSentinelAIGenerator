@@ -62,13 +62,13 @@ def create_discussion():
             logger.warning(f"Too many roles: {len(roles)}")
             return jsonify({'error': 'メモリ使用量削減のため、役割は最大4つまでしか指定できません。'}), 400
             
-        # ターン数の上限を厳格化
-        if num_turns > 2:
+        # ターン数の上限を緩和
+        if num_turns > 5:
             logger.warning(f"Too many turns: {num_turns}")
-            return jsonify({'error': 'メモリ使用量削減のため、ターン数は最大2までしか指定できません。'}), 400
+            return jsonify({'error': 'メモリ使用量削減のため、ターン数は最大5までしか指定できません。'}), 400
             
-        # 総リクエスト数の制限
-        if total_requests > 8:  # より低いリソース使用量の閾値
+        # 総リクエスト数の制限を緩和
+        if total_requests > 15:  # より緩いリソース使用量の閾値
             logger.warning(f"High resource request detected: {total_requests} total LLM calls")
             return jsonify({'error': 'リソース制限のため、役割数×ターン数の組み合わせが大きすぎます。役割数またはターン数を減らしてください。'}), 400
         
