@@ -30,24 +30,47 @@ def create_discussion():
         # リクエストデータのログ（機密情報は除く）
         logger.info(f"Request data: topic='{topic}', num_turns={num_turns}, roles_count={len(roles)}, language='{language}'")
         
-        # 入力検証
+        # 入力検証と長さの制限
         if not topic:
             logger.warning("Empty topic provided")
             return jsonify({'error': '議題を入力してください'}), 400
+            
+        # トピックの長さを制限してメモリ使用量を抑制
+        if len(topic) > 100:
+            logger.warning(f"Topic too long: {len(topic)} chars, truncating")
+            topic = topic[:97] + '...'
         
         if not roles or len(roles) < 2:
             logger.warning(f"Insufficient roles: {len(roles)}")
             return jsonify({'error': '少なくとも2つの役割が必要です'}), 400
             
+        # 各役割の長さを制限してメモリ使用量を抑制
+        for i, role in enumerate(roles):
+            if len(role) > 50:
+                logger.warning(f"Role too long: {len(role)} chars, truncating")
+                roles[i] = role[:47] + '...'
+            
         if num_turns < 1 or num_turns > 10:
             logger.warning(f"Invalid turn count: {num_turns}")
             return jsonify({'error': 'ターン数は1から10の間で指定してください'}), 400
         
-        # リソース使用量の警告
+        # より厳格なリソース制限
         total_requests = len(roles) * num_turns
-        if total_requests > 12:  # リソース使用量の閾値
+        
+        # ロール数の制限を強化
+        if len(roles) > 4:
+            logger.warning(f"Too many roles: {len(roles)}")
+            return jsonify({'error': 'メモリ使用量削減のため、役割は最大4つまでしか指定できません。'}), 400
+            
+        # ターン数の上限を厳格化
+        if num_turns > 2:
+            logger.warning(f"Too many turns: {num_turns}")
+            return jsonify({'error': 'メモリ使用量削減のため、ターン数は最大2までしか指定できません。'}), 400
+            
+        # 総リクエスト数の制限
+        if total_requests > 8:  # より低いリソース使用量の閾値
             logger.warning(f"High resource request detected: {total_requests} total LLM calls")
-            # 警告するが、処理は続行
+            return jsonify({'error': 'リソース制限のため、役割数×ターン数の組み合わせが大きすぎます。役割数またはターン数を減らしてください。'}), 400
         
         # 環境変数からAPIキーを取得
         api_key = os.environ.get('GEMINI_API_KEY')

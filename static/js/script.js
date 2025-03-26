@@ -110,12 +110,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // レスポンスのステータスコードをチェック
                 if (!response.ok) {
-                    // エラーメッセージを取得
-                    return response.json().then(errorData => {
-                        throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
-                    });
+                    // レスポンスのContent-Typeをチェック
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        return response.json().then(errorData => {
+                            throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
+                        });
+                    } else {
+                        // JSONでない場合はテキストとして扱う
+                        return response.text().then(errorText => {
+                            // HTMLレスポンスの場合は一般的なエラーメッセージを表示
+                            if (errorText.includes('<html>')) {
+                                throw new Error(`サーバー内部エラー: リソース制限に達しました。少ないターン数でお試しください。`);
+                            } else {
+                                throw new Error(`サーバーエラー: ${response.status} - ${errorText.slice(0, 100)}`);
+                            }
+                        });
+                    }
                 }
-                return response.json();
+                
+                // 正常なレスポンスの場合はJSONとして解析
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    return response.json();
+                } else {
+                    throw new Error('サーバーから無効なレスポンスフォーマットが返されました');
+                }
             })
             .then(data => {
                 showLoading(false);

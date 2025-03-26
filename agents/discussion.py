@@ -20,12 +20,12 @@ def get_gemini_model(api_key: str, language: str = "ja"):
     try:
         logger.info(f"Initializing Gemini model with language: {language}")
         return ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro",  # 最新のGeminiモデルを使用
+            model="gemini-1.5-flash",  # より軽量なモデルに変更
             google_api_key=api_key,
             temperature=0.7,
-            max_tokens=200,  # より少ないトークン数に制限
-            max_retries=2,   # リトライ回数を制限
-            timeout=20,      # タイムアウトを設定
+            max_tokens=100,  # さらにトークン数を制限
+            max_retries=1,   # リトライ回数を最小に
+            timeout=10,      # タイムアウトを短く設定
             generation_config={"language": language}
         )
     except Exception as e:
@@ -61,7 +61,7 @@ def create_role_prompt(role: str, topic: str) -> str:
     回答は簡潔（2〜3文）かつ洞察に富んだものにしてください。
     どのような状況でも役柄から外れないでください。
     
-    重要: メモリの使用量を減らすため、回答は最大200文字以内に収めてください。
+    重要: メモリの使用量を減らすため、回答は最大100文字以内に収めてください。
     """
 
 def agent_response(
@@ -84,13 +84,20 @@ def agent_response(
     """
     system_prompt = create_role_prompt(role, topic)
     
-    # Format the discussion history
-    history_text = ""
+    # メモリ使用量削減のため、直近の会話履歴のみ含める
+    recent_history = []
     if discussion_history:
-        for turn in discussion_history:
-            history_text += f"{turn['role']}: {turn['content']}\n"
+        # 直近5つの発言だけを使用
+        history_length = len(discussion_history)
+        start_idx = max(0, history_length - 5)
+        recent_history = discussion_history[start_idx:]
     
-    # Prepare the prompt for the agent
+    # 会話履歴のフォーマット
+    history_text = ""
+    for turn in recent_history:
+        history_text += f"{turn['role']}: {turn['content']}\n"
+    
+    # エージェント用のプロンプトを準備
     prompt = f"""
     ディスカッションのテーマ: {topic}
     
@@ -98,19 +105,38 @@ def agent_response(
     {history_text}
     
     「{role}」として、このディスカッションに次の発言をしてください。
-    重要: 回答は短く、最大200文字以内に収めてください。
+    重要: 回答は非常に短く、100文字以内に収めてください。
     """
     
     try:
+        # メモリ使用量を削減するためのタイムアウト設定
+        logger.info(f"Generating response for role: {role}")
+        
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=prompt)
         ]
+        
         response = llm.invoke(messages)
-        return response.content
+        
+        # 文字数制限を強制
+        content = response.content
+        if len(content) > 150:
+            content = content[:147] + "..."
+            
+        return content
+        
     except Exception as e:
         logger.error(f"Error getting response from LLM: {str(e)}")
-        return f"[Error generating response for {role}: {str(e)}]"
+        error_msg = str(e)
+        
+        # エラータイプに基づいて対応
+        if "quota" in error_msg.lower() or "429" in error_msg:
+            return f"[APIのリクエスト制限により、{role}の発言を生成できませんでした]"
+        elif "timeout" in error_msg.lower():
+            return f"[タイムアウトのため、{role}の発言を生成できませんでした]"
+        else:
+            return f"[エラー: {role}の発言を生成できませんでした]"
 
 def generate_discussion(
     api_key: str,
