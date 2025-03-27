@@ -1,7 +1,9 @@
 import os
 import logging
 import tempfile
-from flask import Flask, render_template, request, jsonify, session
+import time
+import json
+from flask import Flask, render_template, request, jsonify, session, url_for
 from agents.discussion import (
     generate_discussion, get_gemini_model, summarize_discussion,
     provide_discussion_guidance, continue_discussion
@@ -433,6 +435,88 @@ def provide_guidance_endpoint():
         error_message = str(e)
         logger.error(f"Error providing discussion guidance: {error_message}")
         return jsonify({'error': f'議論の指導提供中にエラーが発生しました: {error_message}'}), 500
+
+@app.route('/save-discussion', methods=['POST'])
+def save_discussion_endpoint():
+    """議論データをファイルに保存し、ダウンロードリンクを提供する"""
+    try:
+        logger.info("Received request to save discussion")
+        
+        # リクエストデータの取得
+        data = request.json
+        discussion_data = data.get('discussion_data', [])
+        topic = data.get('topic', 'ディスカッション')
+        format_type = data.get('format', 'text')  # text, markdown, json
+        
+        # 議論データの検証
+        if not discussion_data or len(discussion_data) < 1:
+            logger.warning("No discussion data to save")
+            return jsonify({'error': '保存するディスカッションデータがありません。'}), 400
+        
+        # 一時ファイル名の生成
+        timestamp = int(time.time())
+        filename_base = f"discussion_{timestamp}"
+        
+        content = ""
+        mime_type = "text/plain"
+        extension = "txt"
+        
+        if format_type == 'text':
+            # プレーンテキスト形式
+            content = f"ディスカッション: {topic}\n\n"
+            for msg in discussion_data:
+                content += f"【{msg['role']}】\n{msg['content']}\n\n"
+            mime_type = "text/plain"
+            extension = "txt"
+            
+        elif format_type == 'markdown':
+            # Markdown形式
+            content = f"# ディスカッション: {topic}\n\n"
+            for msg in discussion_data:
+                content += f"## {msg['role']}\n\n{msg['content']}\n\n---\n\n"
+            mime_type = "text/markdown"
+            extension = "md"
+            
+        elif format_type == 'json':
+            # JSON形式
+            content = json.dumps({
+                'topic': topic,
+                'timestamp': timestamp,
+                'date': time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timestamp)),
+                'discussion': discussion_data
+            }, ensure_ascii=False, indent=2)
+            mime_type = "application/json"
+            extension = "json"
+        
+        # 一時ファイルパスの作成
+        filename = f"{filename_base}.{extension}"
+        static_path = os.path.join(app.static_folder, 'downloads')
+        
+        # ディレクトリが存在しない場合は作成
+        if not os.path.exists(static_path):
+            os.makedirs(static_path)
+            
+        file_path = os.path.join(static_path, filename)
+        
+        # ファイルに書き込み
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        # ダウンロードURLの生成
+        download_url = url_for('static', filename=f'downloads/{filename}')
+        
+        logger.info(f"Discussion saved successfully: {filename}")
+        return jsonify({
+            'success': True,
+            'filename': filename,
+            'url': download_url,
+            'mime_type': mime_type
+        })
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Error saving discussion: {error_message}")
+        return jsonify({'error': f'ディスカッションの保存中にエラーが発生しました: {error_message}'}), 500
 
 @app.route('/continue-discussion', methods=['POST'])
 def continue_discussion_endpoint():

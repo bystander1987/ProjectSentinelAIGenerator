@@ -347,6 +347,15 @@ document.addEventListener('DOMContentLoaded', function() {
     function enableExportButtons() {
         exportTextBtn.disabled = false;
         copyTextBtn.disabled = false;
+        
+        // ファイル保存用のドロップダウンボタンも有効化
+        document.getElementById('saveFileDropdown').disabled = false;
+        
+        // ファイル保存用のボタン群も有効化
+        const saveButtons = document.querySelectorAll('.save-file-btn');
+        saveButtons.forEach(button => {
+            button.disabled = false;
+        });
     }
     
     function exportDiscussion() {
@@ -361,6 +370,59 @@ document.addEventListener('DOMContentLoaded', function() {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    }
+    
+    // サーバーサイドでファイルとして保存する関数
+    function saveDiscussionToFile(format) {
+        showLoading(true);
+        
+        // 現在の議論データと議題を取得
+        const discussionData = currentDiscussion;
+        const topic = document.getElementById('topic').value;
+        
+        if (!discussionData || discussionData.length === 0) {
+            showError('保存する議論データがありません。');
+            showLoading(false);
+            return;
+        }
+        
+        // APIリクエストの作成
+        fetch('/save-discussion', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                discussion_data: discussionData,
+                topic: topic,
+                format: format
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            showLoading(false);
+            
+            if (data.error) {
+                showError(data.error);
+                return;
+            }
+            
+            // ダウンロードリンクの作成と自動クリック
+            const a = document.createElement('a');
+            a.href = data.url;
+            a.download = data.filename;
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(function() {
+                document.body.removeChild(a);
+            }, 100);
+        })
+        .catch(error => {
+            showLoading(false);
+            showError('ファイル保存中にエラーが発生しました: ' + error.message);
+            console.error('Error saving discussion:', error);
+        });
     }
     
     function copyDiscussion() {

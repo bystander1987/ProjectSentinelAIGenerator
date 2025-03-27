@@ -163,6 +163,26 @@
                             <button class="btn btn-sm btn-outline-secondary" id="provideGuidance" disabled>
                                 <i class="bi bi-lightbulb"></i> 指導
                             </button>
+                            
+                            <!-- ファイル保存のドロップダウン -->
+                            <div class="dropdown d-inline-block">
+                                <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" id="saveFileDropdown" 
+                                        data-bs-toggle="dropdown" aria-expanded="false" disabled>
+                                    <i class="bi bi-download"></i> 保存
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="saveFileDropdown">
+                                    <li><button class="dropdown-item save-file-btn" type="button" onclick="saveDiscussionToFile('text')" disabled>
+                                        <i class="bi bi-file-text"></i> テキスト形式 (.txt)
+                                    </button></li>
+                                    <li><button class="dropdown-item save-file-btn" type="button" onclick="saveDiscussionToFile('markdown')" disabled>
+                                        <i class="bi bi-markdown"></i> Markdown形式 (.md)
+                                    </button></li>
+                                    <li><button class="dropdown-item save-file-btn" type="button" onclick="saveDiscussionToFile('json')" disabled>
+                                        <i class="bi bi-filetype-json"></i> JSON形式 (.json)
+                                    </button></li>
+                                </ul>
+                            </div>
+                            
                             <button class="btn btn-sm btn-outline-secondary" id="exportText" disabled>
                                 <i class="bi bi-file-earmark-text"></i> 出力
                             </button>
