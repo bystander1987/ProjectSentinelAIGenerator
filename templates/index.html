@@ -147,7 +147,7 @@
             
             <!-- ディスカッション表示エリア -->
             <div class="col-md-8">
-                <div class="card">
+                <div class="card mb-4">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0" id="discussionTopicHeader">ディスカッション</h5>
                         <div class="d-flex flex-wrap gap-1">
@@ -223,21 +223,6 @@
                             </div>
                         </div>
                         
-                        <div id="actionItemsContainer" class="mt-4 d-none">
-                            <h4 class="border-bottom pb-2 mb-3">アクションアイテム一覧</h4>
-                            <div id="actionItemsContent" class="markdown-content"></div>
-                        </div>
-                        
-                        <div id="summaryContainer" class="mt-4 d-none">
-                            <h4 class="border-bottom pb-2 mb-3">議論の要約</h4>
-                            <div id="summaryContent" class="markdown-content"></div>
-                        </div>
-                        
-                        <div id="guidanceContainer" class="mt-4 d-none">
-                            <h4 class="border-bottom pb-2 mb-3">議論への指導・提案</h4>
-                            <div id="guidanceContent" class="markdown-content"></div>
-                        </div>
-                        
                         <!-- 議論を継続するためのモーダル -->
                         <div class="modal fade" id="continueDiscussionModal" tabindex="-1" aria-labelledby="continueDiscussionModalLabel" aria-hidden="true">
                             <div class="modal-dialog">
@@ -293,6 +278,36 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- アクションアイテム表示カード -->
+                <div class="card mb-4 d-none" id="actionItemsContainer">
+                    <div class="card-header">
+                        <h5 class="mb-0">アクションアイテム一覧</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="actionItemsContent" class="markdown-content"></div>
+                    </div>
+                </div>
+                
+                <!-- 要約表示カード -->
+                <div class="card mb-4 d-none" id="summaryContainer">
+                    <div class="card-header">
+                        <h5 class="mb-0">議論の要約</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="summaryContent" class="markdown-content"></div>
+                    </div>
+                </div>
+                
+                <!-- 指導・提案表示カード -->
+                <div class="card mb-4 d-none" id="guidanceContainer">
+                    <div class="card-header">
+                        <h5 class="mb-0">議論への指導・提案</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="guidanceContent" class="markdown-content"></div>
                     </div>
                 </div>
             </div>
