@@ -198,10 +198,13 @@
                         </div>
                         
                         <div id="loadingIndicator" class="text-center p-5 d-none">
-                            <div class="spinner-border text-primary" role="status">
+                            <div class="progress mb-3">
+                                <div class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                            <p class="progress-text mt-2">ディスカッションを生成中... 少々お待ちください。</p>
+                            <div class="spinner-border text-primary mt-2" role="status">
                                 <span class="visually-hidden">読み込み中...</span>
                             </div>
-                            <p class="mt-3">ディスカッションを生成中... 少々お待ちください。</p>
                         </div>
                         
                         <div id="actionItemsLoadingIndicator" class="text-center p-5 d-none">
