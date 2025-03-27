@@ -3,6 +3,7 @@ import logging
 import tempfile
 import time
 import json
+import pickle
 from flask import Flask, render_template, request, jsonify, session, url_for
 from agents.discussion import (
     generate_discussion, get_gemini_model, summarize_discussion,
@@ -394,7 +395,7 @@ def summarize_discussion_endpoint():
 
 @app.route('/provide-guidance', methods=['POST'])
 def provide_guidance_endpoint():
-    """議論に対して指示や提案を提供する"""
+    """議論に対して指示や提案を提供し、その指示に基づいて議論を継続する"""
     try:
         logger.info("Received guidance request for discussion")
         
@@ -404,6 +405,8 @@ def provide_guidance_endpoint():
         topic = data.get('topic', '')
         instruction = data.get('instruction', '')
         language = data.get('language', 'ja')
+        num_additional_turns = int(data.get('num_additional_turns', 1))
+        use_document = data.get('use_document', False)
         
         # データの検証
         if not discussion_data or len(discussion_data) < 2:
@@ -413,6 +416,23 @@ def provide_guidance_endpoint():
         if not instruction:
             logger.warning("No instruction provided for guidance")
             return jsonify({'error': '指導内容を入力してください。'}), 400
+            
+        if num_additional_turns < 1 or num_additional_turns > 5:
+            logger.warning(f"Invalid additional turn count: {num_additional_turns}")
+            return jsonify({'error': '追加ターン数は1から5の間で指定してください。'}), 400
+            
+        # 役割リストを作成
+        roles = list(set([message['role'] for message in discussion_data]))
+        
+        # リソース制限の確認
+        if len(roles) > 6:
+            logger.warning(f"Too many roles for continuation: {len(roles)}")
+            return jsonify({'error': 'リソース制限のため、最大6つまでの役割しか指定できません。'}), 400
+            
+        total_additional_requests = len(roles) * num_additional_turns
+        if total_additional_requests > 15:
+            logger.warning(f"Too many additional requests: {total_additional_requests}")
+            return jsonify({'error': 'リソース制限のため、役割数×追加ターン数の組み合わせが大きすぎます。'}), 400
         
         # APIキーの取得
         api_key = os.environ.get('GEMINI_API_KEY')
@@ -420,15 +440,50 @@ def provide_guidance_endpoint():
             logger.error("No API key found for guidance generation")
             return jsonify({'error': 'APIキーが設定されていません。GEMINI_API_KEYを環境変数に設定してください。'}), 500
         
-        # 指導を生成
-        logger.info(f"Generating guidance for discussion on topic: {topic}")
-        logger.info(f"Instruction: {instruction}")
-        result = provide_discussion_guidance(api_key, discussion_data, topic, instruction, language)
+        # 文書参照を使用するかどうかを確認
+        vector_store = None
+        if use_document and session.get('document_uploaded', False):
+            try:
+                vector_store_pickle = session.get('vector_store', None)
+                vector_store = pickle.loads(vector_store_pickle) if vector_store_pickle else None
+                logger.info("Using document reference for guided discussion continuation")
+            except Exception as e:
+                logger.error(f"Error loading vector store: {str(e)}")
+                return jsonify({'error': f'文書参照データの読み込みに失敗しました: {str(e)}'}), 500
         
-        logger.info("Successfully generated discussion guidance")
+        # 指導内容を新しいシステムプロンプトとして議論に追加
+        system_message = {
+            'role': 'システム',
+            'content': f"次の指示に従って議論を継続してください: {instruction}"
+        }
+        discussion_with_guidance = discussion_data.copy()
+        discussion_with_guidance.append(system_message)
+        
+        # 指導を適用した状態で議論を継続
+        logger.info(f"Continuing discussion with guidance on topic: {topic}")
+        logger.info(f"Instruction: {instruction}")
+        logger.info(f"Additional turns: {num_additional_turns}")
+        
+        # 議論を継続
+        continued_discussion = continue_discussion(
+            api_key, 
+            discussion_with_guidance, 
+            topic, 
+            roles, 
+            num_additional_turns, 
+            language, 
+            vector_store
+        )
+        
+        logger.info("Successfully generated guided discussion continuation")
+        
+        # 元の議論からシステムメッセージを除外して継続された議論と結合
+        filtered_original = [msg for msg in discussion_data if msg['role'] != 'システム']
+        result_discussion = filtered_original + continued_discussion
+        
         return jsonify({
             'success': True,
-            'markdown_content': result['markdown_content']
+            'discussion': result_discussion
         })
         
     except Exception as e:

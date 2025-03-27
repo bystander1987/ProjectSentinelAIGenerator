@@ -1243,17 +1243,24 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
     
-    // 議論への指導・提案処理
+    // 指導に基づく議論継続処理
     function handleProvideGuidance() {
         // モーダルを閉じる
         provideGuidanceModal.hide();
         
-        // 指導内容を取得
+        // フォームデータ取得
         const instruction = guidanceInstructionInput.value.trim();
+        const numAdditionalTurns = parseInt(document.getElementById('guidanceAdditionalTurns').value);
+        const useDocument = document.getElementById('useDocumentForGuidance').checked;
         
         // バリデーション
         if (!instruction) {
             showError('指導内容を入力してください。');
+            return;
+        }
+        
+        if (numAdditionalTurns < 1 || numAdditionalTurns > 5) {
+            showError('追加ターン数は1から5の間で指定してください。');
             return;
         }
         
@@ -1284,17 +1291,13 @@ document.addEventListener('DOMContentLoaded', function() {
         showLoading(true);
         hideError();
         
-        // コンテナ表示設定
-        actionItemsContainer.classList.add('d-none');
-        summaryContainer.classList.add('d-none');
-        guidanceContainer.classList.remove('d-none');
-        guidanceContent.innerHTML = '<div class="text-center"><p>議論への指導・提案を生成中...</p></div>';
-        
         // リクエストデータ作成
         const requestData = {
             discussion_data: discussionData,
             topic: topic,
             instruction: instruction,
+            num_additional_turns: numAdditionalTurns,
+            use_document: useDocument,
             language: language
         };
         
@@ -1346,15 +1349,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 if (data.error) {
                     showError(data.error);
-                    guidanceContainer.classList.add('d-none');
                     return;
                 }
                 
-                // MarkdownをHTMLに変換
-                guidanceContent.innerHTML = markdownToHtml(data.markdown_content);
+                // 現在のディスカッションを更新
+                currentDiscussion = data.discussion;
                 
-                // スクロールして表示
-                guidanceContainer.scrollIntoView({ behavior: 'smooth' });
+                // 議論表示を更新
+                displayDiscussion(data.discussion, topic);
+                
+                // トピックヘッダーを更新
+                if (useDocument) {
+                    discussionTopicHeader.textContent = `ディスカッション: ${topic} (文書参照)`;
+                } else {
+                    discussionTopicHeader.textContent = `ディスカッション: ${topic}`;
+                }
+                
+                // 指導・提案カードを非表示
+                guidanceContainer.classList.add('d-none');
             })
             .catch(error => {
                 clearTimeout(timeoutId);

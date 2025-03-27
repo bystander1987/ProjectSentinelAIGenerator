@@ -262,21 +262,32 @@
                             <div class="modal-dialog">
                                 <div class="modal-content">
                                     <div class="modal-header">
-                                        <h5 class="modal-title" id="provideGuidanceModalLabel">議論への指導・提案</h5>
+                                        <h5 class="modal-title" id="provideGuidanceModalLabel">指導に基づく議論の継続</h5>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
                                     </div>
                                     <div class="modal-body">
                                         <form id="provideGuidanceForm">
                                             <div class="mb-3">
-                                                <label for="guidanceInstruction" class="form-label">指導・提案の内容</label>
-                                                <textarea class="form-control" id="guidanceInstruction" rows="4" placeholder="例: この議論で合意点と対立点を詳しく分析してください"></textarea>
-                                                <div class="form-text">議論に対する指導や提案の内容を入力してください</div>
+                                                <label for="guidanceInstruction" class="form-label">指導・指示内容</label>
+                                                <textarea class="form-control" id="guidanceInstruction" rows="4" placeholder="例: より具体的な解決策について議論してください"></textarea>
+                                                <div class="form-text">この指示に従って議論が継続されます</div>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="guidanceAdditionalTurns" class="form-label">追加するターン数</label>
+                                                <input type="number" class="form-control" id="guidanceAdditionalTurns" min="1" max="5" value="1">
+                                                <div class="form-text">各役割が何回追加発言するか (1-5)</div>
+                                            </div>
+                                            <div class="form-check mb-3">
+                                                <input class="form-check-input" type="checkbox" id="useDocumentForGuidance">
+                                                <label class="form-check-label" for="useDocumentForGuidance">
+                                                    アップロード済み文書を参照する（利用可能な場合）
+                                                </label>
                                             </div>
                                         </form>
                                     </div>
                                     <div class="modal-footer">
                                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                                        <button type="button" class="btn btn-primary" id="startProvideGuidance">指導・提案を生成</button>
+                                        <button type="button" class="btn btn-primary" id="startProvideGuidance">指導に基づいて議論を継続</button>
                                     </div>
                                 </div>
                             </div>
