@@ -2,7 +2,10 @@ import os
 import logging
 import tempfile
 from flask import Flask, render_template, request, jsonify, session
-from agents.discussion import generate_discussion, get_gemini_model
+from agents.discussion import (
+    generate_discussion, get_gemini_model, summarize_discussion,
+    provide_discussion_guidance, continue_discussion
+)
 from agents.document_processor import process_uploaded_file, SUPPORTED_FORMATS
 from agents.action_items import generate_action_items
 
@@ -349,6 +352,171 @@ def create_action_items():
         logger.error(f"Error generating action items: {error_message}")
         return jsonify({'error': f'アクションアイテムの生成中にエラーが発生しました: {error_message}'}), 500
 
+@app.route('/summarize-discussion', methods=['POST'])
+def summarize_discussion_endpoint():
+    """議論の内容を要約する"""
+    try:
+        logger.info("Received discussion summarization request")
+        
+        # リクエストデータの取得
+        data = request.json
+        discussion_data = data.get('discussion_data', [])
+        topic = data.get('topic', '')
+        language = data.get('language', 'ja')
+        
+        # 議論データの検証
+        if not discussion_data or len(discussion_data) < 2:
+            logger.warning("Insufficient discussion data for summarization")
+            return jsonify({'error': '要約には最低2つの発言が必要です。'}), 400
+        
+        # APIキーの取得
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            logger.error("No API key found for discussion summarization")
+            return jsonify({'error': 'APIキーが設定されていません。GEMINI_API_KEYを環境変数に設定してください。'}), 500
+        
+        # 要約を生成
+        logger.info(f"Generating summary for discussion on topic: {topic}")
+        result = summarize_discussion(api_key, discussion_data, topic, language)
+        
+        logger.info("Successfully generated discussion summary")
+        return jsonify({
+            'success': True,
+            'markdown_content': result['markdown_content']
+        })
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Error summarizing discussion: {error_message}")
+        return jsonify({'error': f'議論の要約中にエラーが発生しました: {error_message}'}), 500
+
+@app.route('/provide-guidance', methods=['POST'])
+def provide_guidance_endpoint():
+    """議論に対して指示や提案を提供する"""
+    try:
+        logger.info("Received guidance request for discussion")
+        
+        # リクエストデータの取得
+        data = request.json
+        discussion_data = data.get('discussion_data', [])
+        topic = data.get('topic', '')
+        instruction = data.get('instruction', '')
+        language = data.get('language', 'ja')
+        
+        # データの検証
+        if not discussion_data or len(discussion_data) < 2:
+            logger.warning("Insufficient discussion data for guidance")
+            return jsonify({'error': '指導提供には最低2つの発言が必要です。'}), 400
+            
+        if not instruction:
+            logger.warning("No instruction provided for guidance")
+            return jsonify({'error': '指導内容を入力してください。'}), 400
+        
+        # APIキーの取得
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            logger.error("No API key found for guidance generation")
+            return jsonify({'error': 'APIキーが設定されていません。GEMINI_API_KEYを環境変数に設定してください。'}), 500
+        
+        # 指導を生成
+        logger.info(f"Generating guidance for discussion on topic: {topic}")
+        logger.info(f"Instruction: {instruction}")
+        result = provide_discussion_guidance(api_key, discussion_data, topic, instruction, language)
+        
+        logger.info("Successfully generated discussion guidance")
+        return jsonify({
+            'success': True,
+            'markdown_content': result['markdown_content']
+        })
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Error providing discussion guidance: {error_message}")
+        return jsonify({'error': f'議論の指導提供中にエラーが発生しました: {error_message}'}), 500
+
+@app.route('/continue-discussion', methods=['POST'])
+def continue_discussion_endpoint():
+    """既存の議論を継続する"""
+    try:
+        logger.info("Received request to continue discussion")
+        
+        # リクエストデータの取得
+        data = request.json
+        discussion_data = data.get('discussion_data', [])
+        topic = data.get('topic', '')
+        roles = data.get('roles', [])
+        num_additional_turns = int(data.get('num_additional_turns', 1))
+        language = data.get('language', 'ja')
+        
+        # データの検証
+        if not discussion_data or len(discussion_data) < 2:
+            logger.warning("Insufficient discussion data to continue")
+            return jsonify({'error': '継続するには最低2つの発言が必要です。'}), 400
+            
+        if not roles or len(roles) < 2:
+            logger.warning("Insufficient roles to continue discussion")
+            return jsonify({'error': '継続するには少なくとも2つの役割が必要です。'}), 400
+            
+        if num_additional_turns < 1 or num_additional_turns > 5:
+            logger.warning(f"Invalid additional turn count: {num_additional_turns}")
+            return jsonify({'error': '追加ターン数は1から5の間で指定してください。'}), 400
+            
+        # リソース制限の確認
+        if len(roles) > 6:
+            logger.warning(f"Too many roles for continuation: {len(roles)}")
+            return jsonify({'error': 'リソース制限のため、最大6つまでの役割しか指定できません。'}), 400
+            
+        total_additional_requests = len(roles) * num_additional_turns
+        if total_additional_requests > 15:
+            logger.warning(f"Too many additional requests: {total_additional_requests}")
+            return jsonify({'error': 'リソース制限のため、役割数×追加ターン数の組み合わせが大きすぎます。'}), 400
+            
+        # APIキーの取得
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            logger.error("No API key found for discussion continuation")
+            return jsonify({'error': 'APIキーが設定されていません。GEMINI_API_KEYを環境変数に設定してください。'}), 500
+            
+        # 文書参照を使用するかどうかを確認
+        vector_store = None
+        use_document = data.get('use_document', False)
+        
+        if use_document and session.get('document_uploaded', False):
+            logger.info("Using document reference for discussion continuation")
+            document_text = session.get('document_text', '')
+            
+            # テキストからベクトルストアを再作成
+            from agents.document_processor import split_text, create_vector_store
+            chunks = split_text(document_text)
+            vector_store = create_vector_store(chunks, api_key)
+            
+            if not vector_store:
+                logger.warning("Failed to create vector store for continuation")
+                # 継続はするが、文書参照なしで
+                logger.info("Continuing without document reference")
+        
+        # 議論を継続
+        logger.info(f"Continuing discussion on topic: {topic} for {num_additional_turns} additional turns")
+        continued_discussion = continue_discussion(
+            api_key=api_key,
+            discussion_data=discussion_data,
+            topic=topic,
+            roles=roles,
+            num_additional_turns=num_additional_turns,
+            language=language,
+            vector_store=vector_store
+        )
+        
+        logger.info(f"Successfully continued discussion, new total: {len(continued_discussion)} messages")
+        return jsonify({
+            'success': True,
+            'discussion': continued_discussion
+        })
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Error continuing discussion: {error_message}")
+        return jsonify({'error': f'議論の継続中にエラーが発生しました: {error_message}'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

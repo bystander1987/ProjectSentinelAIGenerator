@@ -27,6 +27,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const documentName = document.getElementById('documentName');
     const clearDocumentBtn = document.getElementById('clearDocument');
     const exampleTopics = document.querySelectorAll('.example-topic');
+    
+    // 新機能用のDOM要素
+    const summarizeDiscussionBtn = document.getElementById('summarizeDiscussion');
+    const continueDiscussionBtn = document.getElementById('continueDiscussion');
+    const provideGuidanceBtn = document.getElementById('provideGuidance');
+    const summaryContainer = document.getElementById('summaryContainer');
+    const summaryContent = document.getElementById('summaryContent');
+    const guidanceContainer = document.getElementById('guidanceContainer');
+    const guidanceContent = document.getElementById('guidanceContent');
+    
+    // モーダル関連
+    const continueDiscussionModal = new bootstrap.Modal(document.getElementById('continueDiscussionModal'));
+    const provideGuidanceModal = new bootstrap.Modal(document.getElementById('provideGuidanceModal'));
+    const additionalTurnsInput = document.getElementById('additionalTurns');
+    const useDocumentForContinuationCheckbox = document.getElementById('useDocumentForContinuation');
+    const guidanceInstructionInput = document.getElementById('guidanceInstruction');
+    const startContinueDiscussionBtn = document.getElementById('startContinueDiscussion');
+    const startProvideGuidanceBtn = document.getElementById('startProvideGuidance');
 
     // 現在のディスカッションデータ保存用
     let currentDiscussion = null;
@@ -44,6 +62,13 @@ document.addEventListener('DOMContentLoaded', function() {
         generateActionItemsBtn.addEventListener('click', generateActionItems);
         generateWithDocBtn.addEventListener('click', handleGenerateWithDocument);
         clearDocumentBtn.addEventListener('click', clearUploadedDocument);
+        
+        // 新機能のイベントリスナー
+        summarizeDiscussionBtn.addEventListener('click', summarizeDiscussion);
+        continueDiscussionBtn.addEventListener('click', showContinueDiscussionModal);
+        provideGuidanceBtn.addEventListener('click', showProvideGuidanceModal);
+        startContinueDiscussionBtn.addEventListener('click', handleContinueDiscussion);
+        startProvideGuidanceBtn.addEventListener('click', handleProvideGuidance);
         
         // Example topics
         exampleTopics.forEach(example => {
@@ -203,8 +228,19 @@ document.addEventListener('DOMContentLoaded', function() {
             discussionContainer.appendChild(bubble);
         });
         
-        // Enable action items button
+        // コンテナのリセット
+        actionItemsContainer.classList.add('d-none');
+        summaryContainer.classList.add('d-none');
+        guidanceContainer.classList.add('d-none');
+        
+        // ディスカッション関連ボタンの有効化
         generateActionItemsBtn.disabled = false;
+        summarizeDiscussionBtn.disabled = false;
+        continueDiscussionBtn.disabled = false;
+        provideGuidanceBtn.disabled = false;
+        
+        // 他のエクスポートボタンも有効化
+        enableExportButtons();
     }
     
     function addRoleInput() {
@@ -669,6 +705,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // アクションアイテムコンテナを表示
         actionItemsContainer.classList.remove('d-none');
+        summaryContainer.classList.add('d-none');
+        guidanceContainer.classList.add('d-none');
         actionItemsContent.innerHTML = '<div class="text-center"><p>アクションアイテムを生成中...</p></div>';
         
         // タイムアウト処理
@@ -740,6 +778,405 @@ document.addEventListener('DOMContentLoaded', function() {
                 let errorMsg = error.message || 'アクションアイテムの生成中にエラーが発生しました';
                 showError(errorMsg);
                 console.error('Error generating action items:', error);
+            });
+    }
+    
+    // 議論の要約機能
+    function summarizeDiscussion() {
+        // ディスカッションデータがあることを確認
+        const bubbles = discussionContainer.querySelectorAll('.discussion-bubble');
+        if (bubbles.length === 0) {
+            showError('要約するためのディスカッションデータがありません。');
+            return;
+        }
+        
+        // ディスカッションデータを収集
+        const discussionData = [];
+        bubbles.forEach(bubble => {
+            const role = bubble.querySelector('.role-tag').textContent;
+            const content = bubble.querySelector('.message-content').textContent;
+            
+            discussionData.push({
+                role: role,
+                content: content
+            });
+        });
+        
+        // 言語設定を取得
+        const language = document.getElementById('language').value;
+        
+        // トピックを取得
+        const topic = discussionTopicHeader.textContent.replace('ディスカッション: ', '');
+        
+        // ローディング表示
+        showLoading(true);
+        hideError();
+        
+        // コンテナ表示設定
+        actionItemsContainer.classList.add('d-none');
+        summaryContainer.classList.remove('d-none');
+        guidanceContainer.classList.add('d-none');
+        summaryContent.innerHTML = '<div class="text-center"><p>議論の要約を生成中...</p></div>';
+        
+        // タイムアウト処理
+        const timeoutDuration = 60000; // 60秒
+        let timeoutId;
+        
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error('要約生成がタイムアウトしました。'));
+            }, timeoutDuration);
+        });
+        
+        // リクエスト送信
+        const fetchPromise = fetch('/summarize-discussion', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                discussion_data: discussionData,
+                topic: topic,
+                language: language
+            })
+        });
+        
+        // リクエストとタイムアウトを競合
+        Promise.race([fetchPromise, timeoutPromise])
+            .then(response => {
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        return response.json().then(errorData => {
+                            throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
+                        });
+                    } else {
+                        return response.text().then(errorText => {
+                            if (errorText.includes('<html>')) {
+                                throw new Error(`サーバー内部エラー: 要約生成中にエラーが発生しました。`);
+                            } else {
+                                throw new Error(`サーバーエラー: ${response.status} - ${errorText.slice(0, 100)}`);
+                            }
+                        });
+                    }
+                }
+                
+                return response.json();
+            })
+            .then(data => {
+                showLoading(false);
+                
+                if (data.error) {
+                    showError(data.error);
+                    summaryContainer.classList.add('d-none');
+                    return;
+                }
+                
+                // MarkdownをHTMLに変換
+                summaryContent.innerHTML = markdownToHtml(data.markdown_content);
+                
+                // スクロールして表示
+                summaryContainer.scrollIntoView({ behavior: 'smooth' });
+            })
+            .catch(error => {
+                clearTimeout(timeoutId);
+                showLoading(false);
+                summaryContainer.classList.add('d-none');
+                
+                let errorMsg = error.message || '要約の生成中にエラーが発生しました';
+                showError(errorMsg);
+                console.error('Error summarizing discussion:', error);
+            });
+    }
+    
+    // 議論継続のモーダル表示
+    function showContinueDiscussionModal() {
+        // ディスカッションデータがあることを確認
+        const bubbles = discussionContainer.querySelectorAll('.discussion-bubble');
+        if (bubbles.length === 0) {
+            showError('継続するためのディスカッションデータがありません。');
+            return;
+        }
+        
+        // 文書参照チェックボックスの状態を設定
+        const hasDocument = !documentInfo.classList.contains('d-none');
+        useDocumentForContinuationCheckbox.disabled = !hasDocument;
+        if (!hasDocument) {
+            useDocumentForContinuationCheckbox.checked = false;
+        }
+        
+        // モーダルを表示
+        continueDiscussionModal.show();
+    }
+    
+    // 議論への指導・提案のモーダル表示
+    function showProvideGuidanceModal() {
+        // ディスカッションデータがあることを確認
+        const bubbles = discussionContainer.querySelectorAll('.discussion-bubble');
+        if (bubbles.length === 0) {
+            showError('指導提供するためのディスカッションデータがありません。');
+            return;
+        }
+        
+        // インプットをクリア
+        guidanceInstructionInput.value = '';
+        
+        // モーダルを表示
+        provideGuidanceModal.show();
+    }
+    
+    // 議論継続処理
+    function handleContinueDiscussion() {
+        // モーダルを閉じる
+        continueDiscussionModal.hide();
+        
+        // フォームデータ取得
+        const additionalTurns = parseInt(additionalTurnsInput.value);
+        const useDocument = useDocumentForContinuationCheckbox.checked;
+        
+        // バリデーション
+        if (additionalTurns < 1 || additionalTurns > 5) {
+            showError('追加ターン数は1から5の間で指定してください。');
+            return;
+        }
+        
+        // 議論データを収集
+        const discussionData = [];
+        const bubbles = discussionContainer.querySelectorAll('.discussion-bubble');
+        bubbles.forEach(bubble => {
+            const role = bubble.querySelector('.role-tag').textContent;
+            const content = bubble.querySelector('.message-content').textContent;
+            
+            discussionData.push({
+                role: role,
+                content: content
+            });
+        });
+        
+        // 役割の抽出（ユニークな役割のリストを作成）
+        const roles = Array.from(new Set(discussionData.map(item => item.role)));
+        
+        // トピックを取得
+        const topicFull = discussionTopicHeader.textContent;
+        let topic = topicFull.replace('ディスカッション: ', '');
+        if (topic.endsWith(' (文書参照)')) {
+            topic = topic.replace(' (文書参照)', '');
+        }
+        
+        // 言語設定を取得
+        const language = document.getElementById('language').value;
+        
+        // ローディング表示
+        showLoading(true);
+        hideError();
+        
+        // リクエストデータ作成
+        const requestData = {
+            discussion_data: discussionData,
+            topic: topic,
+            roles: roles,
+            num_additional_turns: additionalTurns,
+            language: language,
+            use_document: useDocument
+        };
+        
+        // タイムアウト処理
+        const timeoutDuration = 90000; // 90秒（継続は長めに）
+        let timeoutId;
+        
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error('議論継続がタイムアウトしました。'));
+            }, timeoutDuration);
+        });
+        
+        // リクエスト送信
+        const fetchPromise = fetch('/continue-discussion', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        });
+        
+        // リクエストとタイムアウトを競合
+        Promise.race([fetchPromise, timeoutPromise])
+            .then(response => {
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        return response.json().then(errorData => {
+                            throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
+                        });
+                    } else {
+                        return response.text().then(errorText => {
+                            if (errorText.includes('<html>')) {
+                                throw new Error(`サーバー内部エラー: 議論継続中にエラーが発生しました。`);
+                            } else {
+                                throw new Error(`サーバーエラー: ${response.status} - ${errorText.slice(0, 100)}`);
+                            }
+                        });
+                    }
+                }
+                
+                return response.json();
+            })
+            .then(data => {
+                showLoading(false);
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                // 現在のディスカッションを更新
+                currentDiscussion = data.discussion;
+                
+                // 議論表示を更新
+                displayDiscussion(data.discussion, topic);
+                
+                // トピックヘッダーを更新
+                if (useDocument) {
+                    discussionTopicHeader.textContent = `ディスカッション: ${topic} (文書参照)`;
+                } else {
+                    discussionTopicHeader.textContent = `ディスカッション: ${topic}`;
+                }
+            })
+            .catch(error => {
+                clearTimeout(timeoutId);
+                showLoading(false);
+                
+                let errorMsg = error.message || '議論の継続中にエラーが発生しました';
+                showError(errorMsg);
+                console.error('Error continuing discussion:', error);
+            });
+    }
+    
+    // 議論への指導・提案処理
+    function handleProvideGuidance() {
+        // モーダルを閉じる
+        provideGuidanceModal.hide();
+        
+        // 指導内容を取得
+        const instruction = guidanceInstructionInput.value.trim();
+        
+        // バリデーション
+        if (!instruction) {
+            showError('指導内容を入力してください。');
+            return;
+        }
+        
+        // 議論データを収集
+        const discussionData = [];
+        const bubbles = discussionContainer.querySelectorAll('.discussion-bubble');
+        bubbles.forEach(bubble => {
+            const role = bubble.querySelector('.role-tag').textContent;
+            const content = bubble.querySelector('.message-content').textContent;
+            
+            discussionData.push({
+                role: role,
+                content: content
+            });
+        });
+        
+        // トピックを取得
+        const topicFull = discussionTopicHeader.textContent;
+        let topic = topicFull.replace('ディスカッション: ', '');
+        if (topic.endsWith(' (文書参照)')) {
+            topic = topic.replace(' (文書参照)', '');
+        }
+        
+        // 言語設定を取得
+        const language = document.getElementById('language').value;
+        
+        // ローディング表示
+        showLoading(true);
+        hideError();
+        
+        // コンテナ表示設定
+        actionItemsContainer.classList.add('d-none');
+        summaryContainer.classList.add('d-none');
+        guidanceContainer.classList.remove('d-none');
+        guidanceContent.innerHTML = '<div class="text-center"><p>議論への指導・提案を生成中...</p></div>';
+        
+        // リクエストデータ作成
+        const requestData = {
+            discussion_data: discussionData,
+            topic: topic,
+            instruction: instruction,
+            language: language
+        };
+        
+        // タイムアウト処理
+        const timeoutDuration = 60000; // 60秒
+        let timeoutId;
+        
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error('指導提供がタイムアウトしました。'));
+            }, timeoutDuration);
+        });
+        
+        // リクエスト送信
+        const fetchPromise = fetch('/provide-guidance', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        });
+        
+        // リクエストとタイムアウトを競合
+        Promise.race([fetchPromise, timeoutPromise])
+            .then(response => {
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        return response.json().then(errorData => {
+                            throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
+                        });
+                    } else {
+                        return response.text().then(errorText => {
+                            if (errorText.includes('<html>')) {
+                                throw new Error(`サーバー内部エラー: 指導提供中にエラーが発生しました。`);
+                            } else {
+                                throw new Error(`サーバーエラー: ${response.status} - ${errorText.slice(0, 100)}`);
+                            }
+                        });
+                    }
+                }
+                
+                return response.json();
+            })
+            .then(data => {
+                showLoading(false);
+                
+                if (data.error) {
+                    showError(data.error);
+                    guidanceContainer.classList.add('d-none');
+                    return;
+                }
+                
+                // MarkdownをHTMLに変換
+                guidanceContent.innerHTML = markdownToHtml(data.markdown_content);
+                
+                // スクロールして表示
+                guidanceContainer.scrollIntoView({ behavior: 'smooth' });
+            })
+            .catch(error => {
+                clearTimeout(timeoutId);
+                showLoading(false);
+                guidanceContainer.classList.add('d-none');
+                
+                let errorMsg = error.message || '指導提供中にエラーが発生しました';
+                showError(errorMsg);
+                console.error('Error providing guidance for discussion:', error);
             });
     }
     

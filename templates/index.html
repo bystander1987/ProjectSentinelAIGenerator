@@ -150,12 +150,21 @@
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0" id="discussionTopicHeader">ディスカッション</h5>
-                        <div>
-                            <button class="btn btn-sm btn-outline-secondary me-1" id="generateActionItems" disabled>
-                                <i class="bi bi-list-check"></i> アクションアイテム生成
+                        <div class="d-flex flex-wrap gap-1">
+                            <button class="btn btn-sm btn-outline-secondary" id="generateActionItems" disabled>
+                                <i class="bi bi-list-check"></i> アクションアイテム
                             </button>
-                            <button class="btn btn-sm btn-outline-secondary me-1" id="exportText" disabled>
-                                <i class="bi bi-file-earmark-text"></i> テキスト出力
+                            <button class="btn btn-sm btn-outline-secondary" id="summarizeDiscussion" disabled>
+                                <i class="bi bi-file-text"></i> 要約
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" id="continueDiscussion" disabled>
+                                <i class="bi bi-arrow-repeat"></i> 継続
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" id="provideGuidance" disabled>
+                                <i class="bi bi-lightbulb"></i> 指導
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" id="exportText" disabled>
+                                <i class="bi bi-file-earmark-text"></i> 出力
                             </button>
                             <button class="btn btn-sm btn-outline-secondary" id="copyText" disabled>
                                 <i class="bi bi-clipboard"></i> コピー
@@ -197,6 +206,72 @@
                         <div id="actionItemsContainer" class="mt-4 d-none">
                             <h4 class="border-bottom pb-2 mb-3">アクションアイテム一覧</h4>
                             <div id="actionItemsContent" class="markdown-content"></div>
+                        </div>
+                        
+                        <div id="summaryContainer" class="mt-4 d-none">
+                            <h4 class="border-bottom pb-2 mb-3">議論の要約</h4>
+                            <div id="summaryContent" class="markdown-content"></div>
+                        </div>
+                        
+                        <div id="guidanceContainer" class="mt-4 d-none">
+                            <h4 class="border-bottom pb-2 mb-3">議論への指導・提案</h4>
+                            <div id="guidanceContent" class="markdown-content"></div>
+                        </div>
+                        
+                        <!-- 議論を継続するためのモーダル -->
+                        <div class="modal fade" id="continueDiscussionModal" tabindex="-1" aria-labelledby="continueDiscussionModalLabel" aria-hidden="true">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="continueDiscussionModalLabel">議論を継続</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <form id="continueDiscussionForm">
+                                            <div class="mb-3">
+                                                <label for="additionalTurns" class="form-label">追加するターン数</label>
+                                                <input type="number" class="form-control" id="additionalTurns" min="1" max="5" value="1">
+                                                <div class="form-text">各役割が何回追加発言するか (1-5)</div>
+                                            </div>
+                                            <div class="form-check mb-3">
+                                                <input class="form-check-input" type="checkbox" id="useDocumentForContinuation">
+                                                <label class="form-check-label" for="useDocumentForContinuation">
+                                                    アップロード済み文書を参照する（利用可能な場合）
+                                                </label>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                                        <button type="button" class="btn btn-primary" id="startContinueDiscussion">議論を継続する</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 議論への指導・提案を提供するためのモーダル -->
+                        <div class="modal fade" id="provideGuidanceModal" tabindex="-1" aria-labelledby="provideGuidanceModalLabel" aria-hidden="true">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="provideGuidanceModalLabel">議論への指導・提案</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <form id="provideGuidanceForm">
+                                            <div class="mb-3">
+                                                <label for="guidanceInstruction" class="form-label">指導・提案の内容</label>
+                                                <textarea class="form-control" id="guidanceInstruction" rows="4" placeholder="例: この議論で合意点と対立点を詳しく分析してください"></textarea>
+                                                <div class="form-text">議論に対する指導や提案の内容を入力してください</div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                                        <button type="button" class="btn btn-primary" id="startProvideGuidance">指導・提案を生成</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -175,6 +175,198 @@ def agent_response(
             return f"[タイムアウトのため、{role}の発言を生成できませんでした]"
         else:
             return f"[エラー: {role}の発言を生成できませんでした]"
+
+def summarize_discussion(
+    api_key: str,
+    discussion_data: List[Dict[str, str]],
+    topic: str,
+    language: str = "ja"
+) -> Dict[str, str]:
+    """
+    議論の内容を要約する
+
+    Args:
+        api_key (str): Google Gemini API key
+        discussion_data (List[Dict[str, str]]): 議論データ
+        topic (str): 議論のテーマ
+        language (str): 出力言語 (デフォルト: "ja")
+        
+    Returns:
+        Dict[str, str]: 要約結果
+    """
+    try:
+        logger.info(f"Summarizing discussion on topic: {topic}")
+        llm = get_gemini_model(api_key, language)
+        
+        # 議論の内容を文字列にフォーマット
+        discussion_text = f"ディスカッションテーマ: {topic}\n\n"
+        for turn in discussion_data:
+            discussion_text += f"{turn['role']}: {turn['content']}\n\n"
+        
+        # 要約用プロンプト
+        system_prompt = f"""
+        あなたは議論の内容を整理し、要約する専門家です。
+        以下のディスカッションの内容を読み、次の項目に分けて要約してください:
+        
+        1. 議論の主なポイント
+        2. 各役割の視点や立場
+        3. 合意された点
+        4. 対立点
+        5. 結論または次のステップ
+        
+        回答はMarkdown形式で整理して提供してください。
+        """
+        
+        prompt = f"""
+        以下のディスカッションを要約してください:
+        
+        {discussion_text}
+        """
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=prompt)
+        ]
+        
+        response = llm.invoke(messages)
+        
+        return {
+            "success": True,
+            "summary": response.content,
+            "markdown_content": response.content
+        }
+        
+    except Exception as e:
+        logger.error(f"Error summarizing discussion: {str(e)}")
+        error_message = str(e)
+        
+        if "quota" in error_message.lower() or "429" in error_message:
+            raise Exception("APIのリクエスト制限に達しました。しばらく待ってから再試行してください。")
+        else:
+            raise Exception(f"議論の要約に失敗しました: {error_message}")
+
+def provide_discussion_guidance(
+    api_key: str,
+    discussion_data: List[Dict[str, str]],
+    topic: str,
+    instruction: str,
+    language: str = "ja"
+) -> Dict[str, str]:
+    """
+    議論に対して指示や提案を提供する
+
+    Args:
+        api_key (str): Google Gemini API key
+        discussion_data (List[Dict[str, str]]): 議論データ
+        topic (str): 議論のテーマ
+        instruction (str): ユーザーからの指示
+        language (str): 出力言語 (デフォルト: "ja")
+        
+    Returns:
+        Dict[str, str]: 指示結果
+    """
+    try:
+        logger.info(f"Providing guidance for discussion on topic: {topic}")
+        logger.info(f"Instruction: {instruction}")
+        llm = get_gemini_model(api_key, language)
+        
+        # 議論の内容を文字列にフォーマット
+        discussion_text = f"ディスカッションテーマ: {topic}\n\n"
+        for turn in discussion_data:
+            discussion_text += f"{turn['role']}: {turn['content']}\n\n"
+        
+        # 指導用プロンプト
+        system_prompt = f"""
+        あなたは議論のファシリテーターです。
+        ディスカッションの内容を分析し、ユーザーの指示に基づいて適切な提案やガイダンスを提供してください。
+        回答はMarkdown形式で整理して提供してください。
+        """
+        
+        prompt = f"""
+        以下のディスカッションに対して、次の指示に基づいて提案やガイダンスを提供してください:
+        
+        指示: {instruction}
+        
+        ディスカッション内容:
+        {discussion_text}
+        """
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=prompt)
+        ]
+        
+        response = llm.invoke(messages)
+        
+        return {
+            "success": True,
+            "guidance": response.content,
+            "markdown_content": response.content
+        }
+        
+    except Exception as e:
+        logger.error(f"Error providing discussion guidance: {str(e)}")
+        error_message = str(e)
+        
+        if "quota" in error_message.lower() or "429" in error_message:
+            raise Exception("APIのリクエスト制限に達しました。しばらく待ってから再試行してください。")
+        else:
+            raise Exception(f"議論の指導提供に失敗しました: {error_message}")
+
+def continue_discussion(
+    api_key: str,
+    discussion_data: List[Dict[str, str]],
+    topic: str,
+    roles: List[str],
+    num_additional_turns: int = 1,
+    language: str = "ja",
+    vector_store: Optional[FAISS] = None
+) -> List[Dict[str, str]]:
+    """
+    既存の議論を継続する
+
+    Args:
+        api_key (str): Google Gemini API key
+        discussion_data (List[Dict[str, str]]): 既存の議論データ
+        topic (str): 議論のテーマ
+        roles (List[str]): 役割のリスト
+        num_additional_turns (int): 追加するターン数
+        language (str): 出力言語 (デフォルト: "ja")
+        vector_store (Optional[FAISS]): RAG用のベクトルストア
+        
+    Returns:
+        List[Dict[str, str]]: 継続された議論データ
+    """
+    try:
+        logger.info(f"Continuing discussion on topic: {topic} for {num_additional_turns} more turns")
+        llm = get_gemini_model(api_key, language)
+        
+        # 既存の議論をコピー
+        continued_discussion = discussion_data.copy()
+        total_roles = len(roles)
+        
+        # 追加ターンを生成
+        for turn in range(num_additional_turns):
+            for i, role in enumerate(roles):
+                logger.info(f"Generating additional turn {turn+1}, Role {role}")
+                
+                # レスポンスを生成
+                response = agent_response(llm, role, topic, continued_discussion, vector_store)
+                continued_discussion.append({
+                    "role": role,
+                    "content": response
+                })
+        
+        return continued_discussion
+    
+    except Exception as e:
+        logger.error(f"Error continuing discussion: {str(e)}")
+        error_message = str(e)
+        
+        if "quota" in error_message.lower() or "429" in error_message:
+            raise Exception("APIのリクエスト制限に達しました。しばらく待ってから再試行してください。")
+        else:
+            raise Exception(f"議論の継続に失敗しました: {error_message}")
 
 def generate_discussion(
     api_key: str,
