@@ -267,9 +267,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // 継続の場合は既存の内容をクリアしない
         if (!isContinuation) {
             discussionContainer.innerHTML = '';
-            discussionContainer.classList.remove('discussion-continued');
-        } else {
-            discussionContainer.classList.add('discussion-continued');
         }
         
         // 継続マーカーが必要かどうかを確認
@@ -279,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // 継続マーカーの追加
         if (needsContinuationMarker) {
             const continuationMarker = document.createElement('div');
-            continuationMarker.className = 'continuation-marker my-4 py-2 text-center bg-info bg-opacity-25 rounded border border-info';
+            continuationMarker.className = 'continuation-marker my-4 py-2 text-center bg-light rounded border border-primary';
             continuationMarker.innerHTML = `
                 <div class="fw-bold">＜ 議論継続部分 ＞</div>
                 <div class="small text-muted">指導または継続機能による追加発言</div>
@@ -529,18 +526,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const bubble = document.createElement('div');
         bubble.className = `discussion-bubble ${isEven ? 'left' : 'right'} mb-3`;
         
-        // content内のマークダウンをHTMLに変換（シンプルな実装）
-        const contentHtml = markdownToHtml(message.content);
-        
         bubble.innerHTML = `
             <div class="role-tag">${message.role}</div>
-            <div class="message-content markdown-content">${contentHtml}</div>
+            <div class="message-content">${message.content}</div>
         `;
         
         discussionContainer.appendChild(bubble);
         
         // スクロールを最新のメッセージに合わせる
-        bubble.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        discussionContainer.scrollTop = discussionContainer.scrollHeight;
     }
     
     function getDiscussionText() {
@@ -1255,7 +1249,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 currentDiscussion = data.discussion;
                 
                 // 議論表示を更新
-                displayDiscussion(data.discussion, topic, true);
+                displayDiscussion(data.discussion, topic);
                 
                 // トピックヘッダーを更新
                 if (useDocument) {
@@ -1387,7 +1381,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 currentDiscussion = data.discussion;
                 
                 // 議論表示を更新
-                displayDiscussion(data.discussion, topic, true);
+                displayDiscussion(data.discussion, topic);
                 
                 // トピックヘッダーを更新
                 if (useDocument) {
@@ -1422,26 +1416,13 @@ document.addEventListener('DOMContentLoaded', function() {
         html = html.replace(/^## (.*$)/gim, '<h4>$1</h4>');
         html = html.replace(/^# (.*$)/gim, '<h3>$1</h3>');
         
-        // 太字とイタリック
+        // 太字
         html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
-        html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
         
-        // コードブロック
-        html = html.replace(/```([^`]+)```/gim, '<pre><code>$1</code></pre>');
-        html = html.replace(/`([^`]+)`/gim, '<code>$1</code>');
-        
-        // リスト（番号付き）
+        // リスト
         html = html.replace(/^\d+\. (.*$)/gim, '<li>$1</li>');
         html = html.replace(/<\/li>\n<li>/gim, '</li><li>');
         html = html.replace(/(<li>.*<\/li>)/gim, '<ol>$1</ol>');
-        
-        // リスト（箇条書き）
-        html = html.replace(/^- (.*$)/gim, '<li>$1</li>');
-        html = html.replace(/^• (.*$)/gim, '<li>$1</li>');
-        html = html.replace(/^・(.*$)/gim, '<li>$1</li>');
-        
-        // 水平線
-        html = html.replace(/^---+$/gim, '<hr>');
         
         // 改行
         html = html.replace(/\n/gim, '<br>');
