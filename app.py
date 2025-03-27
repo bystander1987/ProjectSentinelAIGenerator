@@ -518,6 +518,88 @@ def save_discussion_endpoint():
         logger.error(f"Error saving discussion: {error_message}")
         return jsonify({'error': f'ディスカッションの保存中にエラーが発生しました: {error_message}'}), 500
 
+@app.route('/generate-next-turn', methods=['POST'])
+def generate_next_turn_endpoint():
+    """ディスカッションの次のターンを生成する"""
+    try:
+        logger.info("Received next turn generation request")
+        
+        # リクエストデータの取得
+        data = request.json
+        topic = data.get('topic', '')
+        roles = data.get('roles', [])
+        language = data.get('language', 'ja')
+        current_discussion = data.get('discussion', [])
+        current_turn = int(data.get('currentTurn', 0))
+        current_role_index = int(data.get('currentRoleIndex', 0))
+        num_turns = int(data.get('numTurns', 3))
+        
+        # 入力検証
+        if not topic:
+            logger.warning("Empty topic provided")
+            return jsonify({'error': '議題を入力してください'}), 400
+            
+        if not roles or len(roles) < 2:
+            logger.warning(f"Insufficient roles: {len(roles)}")
+            return jsonify({'error': '少なくとも2つの役割が必要です'}), 400
+            
+        # 環境変数からAPIキーを取得
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            logger.error("No API key found in environment variables")
+            return jsonify({'error': 'APIキーが設定されていません。GEMINI_API_KEYを環境変数に設定してください。'}), 500
+            
+        # 次のターンを生成
+        logger.info(f"Generating next turn for topic: {topic}, Turn: {current_turn+1}, Role index: {current_role_index}")
+        
+        # ベクトルストア（RAG）を取得
+        vector_store = None
+        if 'document_uploaded' in session and session['document_uploaded']:
+            # ドキュメントテキストからベクトルストアを再作成
+            from agents.document_processor import create_vector_store
+            document_text = session.get('document_text', '')
+            if document_text:
+                logger.info("Recreating vector store from session document")
+                text_chunks = document_text.split('\n\n')  # 単純化のため段落で分割
+                vector_store = create_vector_store(text_chunks, api_key)
+                
+        # 次のターンを生成
+        from agents.discussion import generate_next_turn
+        result = generate_next_turn(
+            api_key=api_key,
+            topic=topic,
+            roles=roles,
+            current_discussion=current_discussion,
+            current_turn=current_turn,
+            current_role_index=current_role_index,
+            language=language,
+            vector_store=vector_store
+        )
+        
+        # 最終ターンかどうかを確認
+        total_roles = len(roles)
+        total_iterations = total_roles * num_turns
+        current_iteration = (current_turn * total_roles) + current_role_index + 1
+        is_complete = current_iteration >= total_iterations
+        
+        if is_complete:
+            logger.info("Discussion generation completed")
+            result["is_complete"] = True
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Error generating next turn: {error_message}")
+        
+        # エラーメッセージを分類
+        if "timeout" in error_message.lower() or "time" in error_message.lower():
+            return jsonify({'error': 'リクエストがタイムアウトしました。少ないロール数やターン数で再試行してください。'}), 504
+        elif "memory" in error_message.lower():
+            return jsonify({'error': 'メモリ制限エラー：少ないロール数や少ないターン数でお試しください。'}), 500
+        else:
+            return jsonify({'error': f'{error_message}'}), 500
+
 @app.route('/continue-discussion', methods=['POST'])
 def continue_discussion_endpoint():
     """既存の議論を継続する"""

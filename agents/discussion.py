@@ -368,6 +368,76 @@ def continue_discussion(
         else:
             raise Exception(f"議論の継続に失敗しました: {error_message}")
 
+def generate_next_turn(
+    api_key: str,
+    topic: str,
+    roles: List[str],
+    current_discussion: List[Dict[str, str]],
+    current_turn: int,
+    current_role_index: int,
+    language: str = "ja",
+    vector_store: Optional[FAISS] = None
+) -> Dict[str, Any]:
+    """
+    Generate the next message in a discussion turn by turn.
+    
+    Args:
+        api_key (str): Google Gemini API key
+        topic (str): The discussion topic
+        roles (List[str]): List of roles for the agents
+        current_discussion (List[Dict[str, str]]): Current discussion history
+        current_turn (int): Current turn number (0-indexed)
+        current_role_index (int): Current role index in the roles list
+        language (str): Output language code (default: "ja")
+        vector_store (Optional[FAISS]): Optional vector store for RAG
+        
+    Returns:
+        Dict[str, Any]: Response containing the new message and next turn/role information
+    """
+    try:
+        total_roles = len(roles)
+        llm = get_gemini_model(api_key, language)
+        
+        # 現在の役割を取得
+        current_role = roles[current_role_index]
+        logger.info(f"Generating response for Turn {current_turn+1}, Role {current_role} ({current_role_index+1}/{total_roles})")
+        
+        # レスポンスを生成
+        response = agent_response(llm, current_role, topic, current_discussion, vector_store)
+        new_message = {
+            "role": current_role,
+            "content": response
+        }
+        
+        # 次の役割とターンの計算
+        next_role_index = (current_role_index + 1) % total_roles
+        next_turn = current_turn + 1 if next_role_index == 0 else current_turn
+        
+        return {
+            "message": new_message,
+            "next_turn": next_turn,
+            "next_role_index": next_role_index,
+            "is_complete": False
+        }
+    
+    except Exception as e:
+        logger.error(f"Error in generate_next_turn: {str(e)}")
+        error_message = str(e)
+        
+        # エラー診断
+        if "quota" in error_message.lower() or "429" in error_message or "limit" in error_message.lower():
+            logger.error("API rate limit or quota exceeded")
+            raise Exception("APIのリクエスト制限に達しました。しばらく待ってから再試行してください。")
+        elif "permission" in error_message.lower() or "access" in error_message.lower() or "auth" in error_message.lower():
+            logger.error("API authentication or permission error")
+            raise Exception("APIの認証エラー：APIキーの権限をご確認ください。")
+        elif "memory" in error_message.lower() or "resource" in error_message.lower():
+            logger.error("Memory or resource limitation error")
+            raise Exception("リソース制限エラー：少ないロール数や少ないターン数でお試しください。")
+        else:
+            logger.error(f"Unknown error: {error_message}")
+            raise Exception(f"メッセージの生成に失敗しました: {error_message}")
+
 def generate_discussion(
     api_key: str,
     topic: str,
@@ -378,6 +448,8 @@ def generate_discussion(
 ) -> List[Dict[str, str]]:
     """
     Generate a multi-turn discussion between agents with different roles.
+    Note: This is maintained for backwards compatibility but is now implemented
+    to generate all turns at once by calling generate_next_turn repeatedly.
     
     Args:
         api_key (str): Google Gemini API key
@@ -396,36 +468,33 @@ def generate_discussion(
         if vector_store:
             logger.info("RAG enabled: Using uploaded document as reference")
         
-        llm = get_gemini_model(api_key, language)
         discussion = []
         total_roles = len(roles)
         total_iterations = total_roles * num_turns
         
-        # 1つずつ生成してメモリを管理
-        # 各役割の最初の応答を生成
-        logger.info("Generating initial responses")
-        for i, role in enumerate(roles):
-            logger.info(f"Generating response for {role} ({i+1}/{total_roles})")
-            response = agent_response(llm, role, topic, discussion, vector_store)
-            discussion.append({
-                "role": role,
-                "content": response
-            })
+        # ターンごとに生成
+        current_turn = 0
+        current_role_index = 0
         
-        # 後続のターンを生成
-        if num_turns > 1:
-            logger.info(f"Generating {num_turns-1} additional turns")
-            for turn in range(1, num_turns):
-                for i, role in enumerate(roles):
-                    current_iteration = (turn * total_roles) + i + 1
-                    logger.info(f"Turn {turn+1}, Role {role} ({current_iteration}/{total_iterations})")
-                    
-                    # レスポンスを生成
-                    response = agent_response(llm, role, topic, discussion, vector_store)
-                    discussion.append({
-                        "role": role,
-                        "content": response
-                    })
+        for i in range(total_iterations):
+            # 次のメッセージを生成
+            result = generate_next_turn(
+                api_key=api_key,
+                topic=topic,
+                roles=roles,
+                current_discussion=discussion,
+                current_turn=current_turn,
+                current_role_index=current_role_index,
+                language=language,
+                vector_store=vector_store
+            )
+            
+            # 結果を追加
+            discussion.append(result["message"])
+            
+            # 次の状態を更新
+            current_turn = result["next_turn"]
+            current_role_index = result["next_role_index"]
         
         return discussion
     

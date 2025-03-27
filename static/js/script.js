@@ -132,84 +132,135 @@ document.addEventListener('DOMContentLoaded', function() {
         // Get selected language
         const language = document.getElementById('language').value;
         
-        // Prepare request data
+        // Clear previous discussion and disable export buttons
+        discussionContainer.innerHTML = '';
+        exportTextBtn.disabled = true;
+        copyTextBtn.disabled = true;
+        
+        // 新機能のボタンも無効化
+        generateActionItemsBtn.disabled = true;
+        summarizeDiscussionBtn.disabled = true;
+        continueDiscussionBtn.disabled = true;
+        provideGuidanceBtn.disabled = true;
+        
+        // コンテナを初期化
+        actionItemsContainer.classList.add('d-none');
+        summaryContainer.classList.add('d-none');
+        guidanceContainer.classList.add('d-none');
+        
+        // 状態を初期化
+        currentDiscussion = [];
+        let currentTurn = 0;
+        let currentRoleIndex = 0;
+        
+        // ターンごとに生成する処理を開始
+        generateNextTurn(topic, roles, numTurns, currentDiscussion, currentTurn, currentRoleIndex, language);
+    }
+    
+    function generateNextTurn(topic, roles, numTurns, discussion, currentTurn, currentRoleIndex, language) {
+        // ステータス更新
+        const totalRoles = roles.length;
+        const totalIterations = numTurns * totalRoles;
+        const currentIteration = (currentTurn * totalRoles) + currentRoleIndex + 1;
+        const percent = Math.round((currentIteration / totalIterations) * 100);
+        
+        // ロード表示を更新
+        loadingIndicator.querySelector('.progress-bar').style.width = `${percent}%`;
+        loadingIndicator.querySelector('.progress-bar').setAttribute('aria-valuenow', percent);
+        loadingIndicator.querySelector('.progress-text').textContent = 
+            `${roles[currentRoleIndex]}の発言を生成中... (${currentIteration}/${totalIterations})`;
+        
+        // リクエストデータを準備
         const requestData = {
             topic: topic,
             roles: roles,
-            num_turns: numTurns,
+            numTurns: numTurns,
+            discussion: discussion,
+            currentTurn: currentTurn,
+            currentRoleIndex: currentRoleIndex,
             language: language
         };
         
-        // Set timeout for long-running requests
-        const timeoutDuration = 60000; // 60 seconds
-        let timeoutId;
-        
-        const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => {
-                reject(new Error('ディスカッション生成がタイムアウトしました。サーバーが混雑しているか、複雑なリクエストの可能性があります。'));
-            }, timeoutDuration);
-        });
-        
-        // Fetch API request
-        const fetchPromise = fetch('/generate-discussion', {
+        // サーバーに次のターンを要求
+        fetch('/generate-next-turn', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(requestData)
-        });
-        
-        // Race between fetch and timeout
-        Promise.race([fetchPromise, timeoutPromise])
-            .then(response => {
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) {
-                    const contentType = response.headers.get('content-type');
-                    if (contentType && contentType.includes('application/json')) {
-                        return response.json().then(errorData => {
-                            throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
-                        });
-                    } else {
-                        return response.text().then(errorText => {
-                            if (errorText.includes('<html>')) {
-                                throw new Error(`サーバー内部エラー: ディスカッション生成中にエラーが発生しました。`);
-                            } else {
-                                throw new Error(`サーバーエラー: ${response.status} - ${errorText.slice(0, 100)}`);
-                            }
-                        });
-                    }
-                }
-                
+        })
+        .then(response => {
+            if (!response.ok) {
                 const contentType = response.headers.get('content-type');
                 if (contentType && contentType.includes('application/json')) {
-                    return response.json();
+                    return response.json().then(errorData => {
+                        throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
+                    });
                 } else {
-                    throw new Error('サーバーから無効なレスポンスフォーマットが返されました');
+                    return response.text().then(errorText => {
+                        if (errorText.includes('<html>')) {
+                            throw new Error(`サーバー内部エラー: ディスカッション生成中にエラーが発生しました。`);
+                        } else {
+                            throw new Error(`サーバーエラー: ${response.status} - ${errorText.slice(0, 100)}`);
+                        }
+                    });
                 }
-            })
-            .then(data => {
+            }
+            
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return response.json();
+            } else {
+                throw new Error('サーバーから無効なレスポンスフォーマットが返されました');
+            }
+        })
+        .then(data => {
+            if (data.error) {
                 showLoading(false);
-                
-                if (data.error) {
-                    showError(data.error);
-                    return;
-                }
-                
-                // Store current discussion
-                currentDiscussion = data.discussion;
-                
-                displayDiscussion(data.discussion, topic);
+                showError(data.error);
+                return;
+            }
+            
+            // 新しいメッセージを追加
+            const newMessage = data.message;
+            discussion.push(newMessage);
+            
+            // UIに表示
+            appendMessage(newMessage);
+            
+            // 全ての会話が終了したか確認
+            if (data.is_complete) {
+                // 処理終了
+                showLoading(false);
+                currentDiscussion = discussion;
                 enableExportButtons();
-            })
-            .catch(error => {
-                clearTimeout(timeoutId);
-                showLoading(false);
                 
-                let errorMsg = error.message || 'ディスカッションの生成中にエラーが発生しました';
-                showError(errorMsg);
-                console.error('Error generating discussion:', error);
-            });
+                // 関連ボタンを有効化
+                generateActionItemsBtn.disabled = false;
+                summarizeDiscussionBtn.disabled = false;
+                continueDiscussionBtn.disabled = false;
+                provideGuidanceBtn.disabled = false;
+            } else {
+                // 次のターンを生成
+                setTimeout(() => {
+                    generateNextTurn(
+                        topic, 
+                        roles, 
+                        numTurns, 
+                        discussion, 
+                        data.next_turn, 
+                        data.next_role_index,
+                        language
+                    );
+                }, 100); // わずかな遅延を追加して UI 更新を確実にする
+            }
+        })
+        .catch(error => {
+            showLoading(false);
+            let errorMsg = error.message || 'ディスカッションの生成中にエラーが発生しました';
+            showError(errorMsg);
+            console.error('Error generating discussion:', error);
+        });
     }
     
     function displayDiscussion(discussion, topic) {
@@ -443,6 +494,24 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
     
+    function appendMessage(message) {
+        const messageCount = discussionContainer.children.length;
+        const isEven = messageCount % 2 === 0;
+        
+        const bubble = document.createElement('div');
+        bubble.className = `discussion-bubble ${isEven ? 'left' : 'right'} mb-3`;
+        
+        bubble.innerHTML = `
+            <div class="role-tag">${message.role}</div>
+            <div class="message-content">${message.content}</div>
+        `;
+        
+        discussionContainer.appendChild(bubble);
+        
+        // スクロールを最新のメッセージに合わせる
+        discussionContainer.scrollTop = discussionContainer.scrollHeight;
+    }
+    
     function getDiscussionText() {
         let text = `ディスカッション: ${discussionTopicHeader.textContent}\n\n`;
         
@@ -657,84 +726,140 @@ document.addEventListener('DOMContentLoaded', function() {
         // Get selected language
         const language = document.getElementById('language').value;
         
-        // Prepare request data
+        // Clear previous discussion and disable export buttons
+        discussionContainer.innerHTML = '';
+        exportTextBtn.disabled = true;
+        copyTextBtn.disabled = true;
+        
+        // 新機能のボタンも無効化
+        generateActionItemsBtn.disabled = true;
+        summarizeDiscussionBtn.disabled = true;
+        continueDiscussionBtn.disabled = true;
+        provideGuidanceBtn.disabled = true;
+        
+        // コンテナを初期化
+        actionItemsContainer.classList.add('d-none');
+        summaryContainer.classList.add('d-none');
+        guidanceContainer.classList.add('d-none');
+        
+        // 状態を初期化
+        currentDiscussion = [];
+        let currentTurn = 0;
+        let currentRoleIndex = 0;
+        
+        // ドキュメント参照を使用するフラグをセット
+        const useDocument = true;
+        
+        // ターンごとに生成する処理
+        generateNextTurnWithDocument(topic, roles, numTurns, currentDiscussion, currentTurn, currentRoleIndex, language, useDocument);
+    }
+    
+    function generateNextTurnWithDocument(topic, roles, numTurns, discussion, currentTurn, currentRoleIndex, language, useDocument) {
+        // ステータス更新
+        const totalRoles = roles.length;
+        const totalIterations = numTurns * totalRoles;
+        const currentIteration = (currentTurn * totalRoles) + currentRoleIndex + 1;
+        const percent = Math.round((currentIteration / totalIterations) * 100);
+        
+        // ロード表示を更新
+        loadingIndicator.querySelector('.progress-bar').style.width = `${percent}%`;
+        loadingIndicator.querySelector('.progress-bar').setAttribute('aria-valuenow', percent);
+        loadingIndicator.querySelector('.progress-text').textContent = 
+            `${roles[currentRoleIndex]}の発言を生成中... (文書参照) (${currentIteration}/${totalIterations})`;
+        
+        // リクエストデータを準備
         const requestData = {
             topic: topic,
             roles: roles,
-            num_turns: numTurns,
-            language: language
+            numTurns: numTurns,
+            discussion: discussion,
+            currentTurn: currentTurn,
+            currentRoleIndex: currentRoleIndex,
+            language: language,
+            use_document: useDocument
         };
         
-        // Set timeout for long-running requests
-        const timeoutDuration = 90000; // 90 seconds (longer for document-based discussions)
-        let timeoutId;
-        
-        const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => {
-                reject(new Error('ディスカッション生成がタイムアウトしました。サーバーが混雑しているか、複雑なリクエストの可能性があります。'));
-            }, timeoutDuration);
-        });
-        
-        // Fetch API request
-        const fetchPromise = fetch('/generate-discussion-with-document', {
+        // サーバーに次のターンを要求
+        fetch('/generate-next-turn', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(requestData)
-        });
-        
-        // Race between fetch and timeout
-        Promise.race([fetchPromise, timeoutPromise])
-            .then(response => {
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) {
-                    const contentType = response.headers.get('content-type');
-                    if (contentType && contentType.includes('application/json')) {
-                        return response.json().then(errorData => {
-                            throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
-                        });
-                    } else {
-                        return response.text().then(errorText => {
-                            if (errorText.includes('<html>')) {
-                                throw new Error(`サーバー内部エラー: ディスカッション生成中にエラーが発生しました。`);
-                            } else {
-                                throw new Error(`サーバーエラー: ${response.status} - ${errorText.slice(0, 100)}`);
-                            }
-                        });
-                    }
-                }
-                
+        })
+        .then(response => {
+            if (!response.ok) {
                 const contentType = response.headers.get('content-type');
                 if (contentType && contentType.includes('application/json')) {
-                    return response.json();
+                    return response.json().then(errorData => {
+                        throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
+                    });
                 } else {
-                    throw new Error('サーバーから無効なレスポンスフォーマットが返されました');
+                    return response.text().then(errorText => {
+                        if (errorText.includes('<html>')) {
+                            throw new Error(`サーバー内部エラー: ディスカッション生成中にエラーが発生しました。`);
+                        } else {
+                            throw new Error(`サーバーエラー: ${response.status} - ${errorText.slice(0, 100)}`);
+                        }
+                    });
                 }
-            })
-            .then(data => {
+            }
+            
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return response.json();
+            } else {
+                throw new Error('サーバーから無効なレスポンスフォーマットが返されました');
+            }
+        })
+        .then(data => {
+            if (data.error) {
                 showLoading(false);
-                
-                if (data.error) {
-                    showError(data.error);
-                    return;
-                }
-                
-                // Store current discussion
-                currentDiscussion = data.discussion;
-                
-                displayDiscussion(data.discussion, topic);
+                showError(data.error);
+                return;
+            }
+            
+            // 新しいメッセージを追加
+            const newMessage = data.message;
+            discussion.push(newMessage);
+            
+            // UIに表示
+            appendMessage(newMessage);
+            
+            // 全ての会話が終了したか確認
+            if (data.is_complete) {
+                // 処理終了
+                showLoading(false);
+                currentDiscussion = discussion;
                 enableExportButtons();
-            })
-            .catch(error => {
-                clearTimeout(timeoutId);
-                showLoading(false);
                 
-                let errorMsg = error.message || 'ディスカッションの生成中にエラーが発生しました';
-                showError(errorMsg);
-                console.error('Error generating discussion with document:', error);
-            });
+                // 関連ボタンを有効化
+                generateActionItemsBtn.disabled = false;
+                summarizeDiscussionBtn.disabled = false;
+                continueDiscussionBtn.disabled = false;
+                provideGuidanceBtn.disabled = false;
+            } else {
+                // 次のターンを生成
+                setTimeout(() => {
+                    generateNextTurnWithDocument(
+                        topic, 
+                        roles, 
+                        numTurns, 
+                        discussion, 
+                        data.next_turn, 
+                        data.next_role_index,
+                        language,
+                        useDocument
+                    );
+                }, 100); // わずかな遅延を追加して UI 更新を確実にする
+            }
+        })
+        .catch(error => {
+            showLoading(false);
+            let errorMsg = error.message || 'ディスカッションの生成中にエラーが発生しました';
+            showError(errorMsg);
+            console.error('Error generating discussion with document:', error);
+        });
     }
     
     // アクションアイテム生成機能
