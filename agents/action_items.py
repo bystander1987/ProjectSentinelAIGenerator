@@ -49,17 +49,18 @@ def create_action_items_prompt(discussion_data: List[Dict[str, str]], language: 
     # 言語に基づいたプロンプトテンプレート
     if language.lower() == "ja":
         template = """
-以下の議論を分析し、各参加者（役割）に対するアクションアイテムをまとめてください。
+以下の議論を分析し、各参加者（役割）に対する具体的なアクションアイテムをまとめてください。
 
 ## 議論内容:
 {discussion}
 
 ## 指示:
-1. 各役割が取るべき具体的なアクションを特定してください。
-2. アクションには優先順位（高・中・低）をつけてください。
-3. 各アクションの期限や完了条件を明確にしてください。
-4. 役割ごとに最大5つのアクションアイテムを提案してください。
-5. 最後に全体の次のステップを3つ提案してください。
+1. 各役割が取るべき具体的なアクションを特定してください。アクションは具体的かつ実行可能なものにしてください。
+2. アクションには「高・中・低」の優先順位と目安となる期限（例: 1週間以内、1ヶ月以内）を必ず付けてください。
+3. 各アクションは測定可能で明確な完了条件を含めてください。
+4. 役割ごとに3〜5つの実践的なアクションアイテムを提案してください。
+5. 最後に組織全体として取り組むべき次のステップを3つ提案してください。
+6. すべてのアクションは社交辞令や感謝の言葉ではなく、具体的な行動指針のみを記述してください。
 
 ## 出力形式:
 各役割ごとに以下の形式で出力してください。
@@ -67,32 +68,33 @@ def create_action_items_prompt(discussion_data: List[Dict[str, str]], language: 
 # アクションアイテム一覧
 
 ## [役割名1]
-1. **アクション1**: 説明 (優先度: 高/中/低)
-2. **アクション2**: 説明 (優先度: 高/中/低)
+1. **[具体的なアクション名]**: 詳細な説明と完了条件 (優先度: 高/中/低、期限: XX以内)
+2. **[具体的なアクション名]**: 詳細な説明と完了条件 (優先度: 高/中/低、期限: XX以内)
 ...
 
 ## [役割名2]
 ...
 
-## 次のステップ
-1. ...
-2. ...
-3. ...
+## 組織全体の次のステップ
+1. **[ステップ名]**: 具体的な実行内容と期待される成果
+2. **[ステップ名]**: 具体的な実行内容と期待される成果
+3. **[ステップ名]**: 具体的な実行内容と期待される成果
 """
     else:
         # 英語版プロンプト
         template = """
-Analyze the following discussion and summarize action items for each participant (role).
+Analyze the following discussion and create specific, actionable items for each participant (role).
 
 ## Discussion:
 {discussion}
 
 ## Instructions:
-1. Identify specific actions that each role should take.
-2. Assign priority (High, Medium, Low) to each action.
-3. Clearly define deadlines or completion criteria for each action.
-4. Suggest a maximum of 5 action items per role.
-5. Finally, propose 3 next steps for the entire team.
+1. Identify specific, concrete actions that each role should take. Actions must be specific and implementable.
+2. Assign each action a priority (High, Medium, Low) and an estimated timeframe (e.g., within 1 week, within 1 month).
+3. Include measurable and clear completion criteria for each action.
+4. Suggest 3-5 practical action items per role.
+5. Finally, propose 3 next steps for the organization as a whole.
+6. Focus on actionable directives only, avoiding pleasantries or expressions of gratitude.
 
 ## Output Format:
 Please output in the following format for each role.
@@ -100,17 +102,17 @@ Please output in the following format for each role.
 # Action Items List
 
 ## [Role Name 1]
-1. **Action 1**: Description (Priority: High/Medium/Low)
-2. **Action 2**: Description (Priority: High/Medium/Low)
+1. **[Specific Action Name]**: Detailed explanation with completion criteria (Priority: High/Medium/Low, Deadline: within XX)
+2. **[Specific Action Name]**: Detailed explanation with completion criteria (Priority: High/Medium/Low, Deadline: within XX)
 ...
 
 ## [Role Name 2]
 ...
 
-## Next Steps
-1. ...
-2. ...
-3. ...
+## Organization-wide Next Steps
+1. **[Step Name]**: Specific implementation details and expected outcomes
+2. **[Step Name]**: Specific implementation details and expected outcomes
+3. **[Step Name]**: Specific implementation details and expected outcomes
 """
 
     # 議論内容をフォーマット
