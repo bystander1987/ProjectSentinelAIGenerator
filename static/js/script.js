@@ -330,6 +330,20 @@ document.addEventListener('DOMContentLoaded', function() {
         summaryContainer.classList.add('d-none');
         guidanceContainer.classList.add('d-none');
         
+        // スクロール処理
+        setTimeout(() => {
+            if (isContinuation && needsContinuationMarker) {
+                // 継続議論の場合、継続マーカーの位置にスクロール
+                const continuationMarker = discussionContainer.querySelector('.continuation-marker');
+                if (continuationMarker) {
+                    continuationMarker.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            } else if (!isContinuation) {
+                // 新規議論の場合、議論コンテナの先頭へスクロール
+                discussionContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 200);
+        
         // ディスカッション関連ボタンの有効化
         generateActionItemsBtn.disabled = false;
         summarizeDiscussionBtn.disabled = false;
@@ -1003,8 +1017,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 // MarkdownをHTMLに変換
                 actionItemsContent.innerHTML = markdownToHtml(data.markdown_content);
                 
-                // スクロールして表示
-                actionItemsContainer.scrollIntoView({ behavior: 'smooth' });
+                // アクションアイテムコンテナへスクロール
+                setTimeout(() => {
+                    actionItemsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 200);
             })
             .catch(error => {
                 clearTimeout(timeoutId);
@@ -1114,7 +1130,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 summaryContent.innerHTML = markdownToHtml(data.markdown_content);
                 
                 // スクロールして表示
-                summaryContainer.scrollIntoView({ behavior: 'smooth' });
+                setTimeout(() => {
+                    summaryContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 200);
             })
             .catch(error => {
                 clearTimeout(timeoutId);
@@ -1315,6 +1333,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // エクスポートボタンを有効化
                 enableExportButtons();
+                
+
             } else {
                 // 次のリクエストのためにパラメータを更新
                 requestData.current_turn = data.next_turn;
@@ -1447,6 +1467,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 現在のディスカッションを更新
                 currentDiscussion = data.discussion;
+                
+                // 継続前のメッセージ数を記録
+                const previousBubbleCount = discussionContainer.querySelectorAll('.discussion-bubble').length;
                 
                 // 議論表示を更新
                 displayDiscussion(data.discussion, topic, true);
