@@ -1208,88 +1208,132 @@ document.addEventListener('DOMContentLoaded', function() {
         showLoading(true);
         hideError();
         
-        // リクエストデータ作成
-        const requestData = {
+        // 初期リクエストデータ作成（ターンごとに更新される）
+        let requestData = {
             discussion_data: discussionData,
             topic: topic,
             roles: roles,
             num_additional_turns: additionalTurns,
             language: language,
-            use_document: useDocument
+            use_document: useDocument,
+            current_turn: 0,  // 初期ターン
+            current_role_index: 0  // 初期役割インデックス
         };
         
-        // タイムアウト処理
-        const timeoutDuration = 90000; // 90秒（継続は長めに）
-        let timeoutId;
+        // 継続議論のターンごとの処理を実行
+        fetchNextContinuationTurn(requestData, discussionData);
+    }
+    
+    // 継続議論の次のターンをフェッチする関数
+    function fetchNextContinuationTurn(requestData, currentDiscussionData) {
+        // 進行状況更新
+        const totalRoles = requestData.roles.length;
+        const totalIterations = requestData.num_additional_turns * totalRoles;
+        const currentIteration = (requestData.current_turn * totalRoles) + requestData.current_role_index;
+        const percent = Math.round((currentIteration / totalIterations) * 100);
         
-        const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => {
-                reject(new Error('議論継続がタイムアウトしました。'));
-            }, timeoutDuration);
-        });
+        // ロード表示を更新
+        loadingIndicator.querySelector('.progress-bar').style.width = `${percent}%`;
+        loadingIndicator.querySelector('.progress-bar').setAttribute('aria-valuenow', percent);
+        
+        const roleIndex = requestData.current_role_index;
+        const roleName = requestData.roles[roleIndex] || '参加者';
+        
+        loadingIndicator.querySelector('.progress-text').textContent = 
+            `${roleName}の発言を生成中... (${currentIteration+1}/${totalIterations})` + 
+            (requestData.use_document ? ' (文書参照)' : '');
         
         // リクエスト送信
-        const fetchPromise = fetch('/continue-discussion', {
+        fetch('/continue-discussion', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(requestData)
-        });
-        
-        // リクエストとタイムアウトを競合
-        Promise.race([fetchPromise, timeoutPromise])
-            .then(response => {
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) {
-                    const contentType = response.headers.get('content-type');
-                    if (contentType && contentType.includes('application/json')) {
-                        return response.json().then(errorData => {
-                            throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
-                        });
-                    } else {
-                        return response.text().then(errorText => {
-                            if (errorText.includes('<html>')) {
-                                throw new Error(`サーバー内部エラー: 議論継続中にエラーが発生しました。`);
-                            } else {
-                                throw new Error(`サーバーエラー: ${response.status} - ${errorText.slice(0, 100)}`);
-                            }
-                        });
-                    }
-                }
-                
-                return response.json();
-            })
-            .then(data => {
-                showLoading(false);
-                
-                if (data.error) {
-                    showError(data.error);
-                    return;
-                }
-                
-                // 現在のディスカッションを更新
-                currentDiscussion = data.discussion;
-                
-                // 議論表示を更新
-                displayDiscussion(data.discussion, topic, true);
-                
-                // トピックヘッダーを更新
-                if (useDocument) {
-                    discussionTopicHeader.textContent = `ディスカッション: ${topic} (文書参照)`;
+        })
+        .then(response => {
+            if (!response.ok) {
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    return response.json().then(errorData => {
+                        throw new Error(errorData.error || `サーバーエラー: ${response.status}`);
+                    });
                 } else {
-                    discussionTopicHeader.textContent = `ディスカッション: ${topic}`;
+                    return response.text().then(errorText => {
+                        if (errorText.includes('<html>')) {
+                            throw new Error(`サーバー内部エラー: 議論継続中にエラーが発生しました。`);
+                        } else {
+                            throw new Error(`サーバーエラー: ${response.status} - ${errorText.slice(0, 100)}`);
+                        }
+                    });
                 }
-            })
-            .catch(error => {
-                clearTimeout(timeoutId);
+            }
+            
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                showLoading(false);
+                showError(data.error);
+                return;
+            }
+            
+            // 最初のリクエスト（初期化）の場合は次のリクエストに進む
+            if (!data.message) {
+                // 次のリクエストのためにパラメータを更新
+                requestData.current_turn = data.next_turn;
+                requestData.current_role_index = data.next_role_index;
+                
+                // 次のターンを即時取得
+                fetchNextContinuationTurn(requestData, currentDiscussionData);
+                return;
+            }
+            
+            // 新しいメッセージを追加
+            currentDiscussionData.push(data.message);
+            
+            // UIに表示
+            appendMessage(data.message);
+            
+            // トピックヘッダーを更新
+            if (requestData.use_document) {
+                discussionTopicHeader.textContent = `ディスカッション: ${requestData.topic} (文書参照)`;
+            } else {
+                discussionTopicHeader.textContent = `ディスカッション: ${requestData.topic}`;
+            }
+            
+            // すべての会話が終了したかどうかを確認
+            if (data.is_complete) {
+                // 処理終了
                 showLoading(false);
                 
-                let errorMsg = error.message || '議論の継続中にエラーが発生しました';
-                showError(errorMsg);
-                console.error('Error continuing discussion:', error);
-            });
+                // 関連ボタンを有効化
+                generateActionItemsBtn.disabled = false;
+                summarizeDiscussionBtn.disabled = false;
+                continueDiscussionBtn.disabled = false;
+                provideGuidanceBtn.disabled = false;
+                
+                // エクスポートボタンを有効化
+                enableExportButtons();
+            } else {
+                // 次のリクエストのためにパラメータを更新
+                requestData.current_turn = data.next_turn;
+                requestData.current_role_index = data.next_role_index;
+                requestData.discussion_data = currentDiscussionData;
+                
+                // 次のターンをわずかな遅延で取得（UI更新を確実にするため）
+                setTimeout(() => {
+                    fetchNextContinuationTurn(requestData, currentDiscussionData);
+                }, 100);
+            }
+        })
+        .catch(error => {
+            showLoading(false);
+            
+            let errorMsg = error.message || '議論の継続中にエラーが発生しました';
+            showError(errorMsg);
+            console.error('Error continuing discussion:', error);
+        });
     }
     
     // 指導に基づく議論継続処理

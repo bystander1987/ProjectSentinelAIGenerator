@@ -7,7 +7,7 @@ import pickle
 from flask import Flask, render_template, request, jsonify, session, url_for
 from agents.discussion import (
     generate_discussion, get_gemini_model, summarize_discussion,
-    provide_discussion_guidance, continue_discussion
+    provide_discussion_guidance, continue_discussion, generate_next_turn
 )
 from agents.document_processor import process_uploaded_file, SUPPORTED_FORMATS
 from agents.action_items import generate_action_items
@@ -668,30 +668,36 @@ def continue_discussion_endpoint():
         roles = data.get('roles', [])
         num_additional_turns = int(data.get('num_additional_turns', 1))
         language = data.get('language', 'ja')
+        current_turn = int(data.get('current_turn', 0))
+        current_role_index = int(data.get('current_role_index', 0))
         
-        # データの検証
-        if not discussion_data or len(discussion_data) < 2:
-            logger.warning("Insufficient discussion data to continue")
-            return jsonify({'error': '継続するには最低2つの発言が必要です。'}), 400
-            
-        if not roles or len(roles) < 2:
-            logger.warning("Insufficient roles to continue discussion")
-            return jsonify({'error': '継続するには少なくとも2つの役割が必要です。'}), 400
-            
-        if num_additional_turns < 1 or num_additional_turns > 5:
-            logger.warning(f"Invalid additional turn count: {num_additional_turns}")
-            return jsonify({'error': '追加ターン数は1から5の間で指定してください。'}), 400
-            
-        # リソース制限の確認
-        if len(roles) > 6:
-            logger.warning(f"Too many roles for continuation: {len(roles)}")
-            return jsonify({'error': 'リソース制限のため、最大6つまでの役割しか指定できません。'}), 400
-            
-        total_additional_requests = len(roles) * num_additional_turns
-        if total_additional_requests > 15:
-            logger.warning(f"Too many additional requests: {total_additional_requests}")
-            return jsonify({'error': 'リソース制限のため、役割数×追加ターン数の組み合わせが大きすぎます。'}), 400
-            
+        # 新規リクエストか継続リクエストかを判断
+        is_new_request = current_turn == 0 and current_role_index == 0
+        
+        # データの検証（新規リクエストの場合のみ）
+        if is_new_request:
+            if not discussion_data or len(discussion_data) < 2:
+                logger.warning("Insufficient discussion data to continue")
+                return jsonify({'error': '継続するには最低2つの発言が必要です。'}), 400
+                
+            if not roles or len(roles) < 2:
+                logger.warning("Insufficient roles to continue discussion")
+                return jsonify({'error': '継続するには少なくとも2つの役割が必要です。'}), 400
+                
+            if num_additional_turns < 1 or num_additional_turns > 5:
+                logger.warning(f"Invalid additional turn count: {num_additional_turns}")
+                return jsonify({'error': '追加ターン数は1から5の間で指定してください。'}), 400
+                
+            # リソース制限の確認
+            if len(roles) > 6:
+                logger.warning(f"Too many roles for continuation: {len(roles)}")
+                return jsonify({'error': 'リソース制限のため、最大6つまでの役割しか指定できません。'}), 400
+                
+            total_additional_requests = len(roles) * num_additional_turns
+            if total_additional_requests > 15:
+                logger.warning(f"Too many additional requests: {total_additional_requests}")
+                return jsonify({'error': 'リソース制限のため、役割数×追加ターン数の組み合わせが大きすぎます。'}), 400
+        
         # APIキーの取得
         api_key = os.environ.get('GEMINI_API_KEY')
         if not api_key:
@@ -704,35 +710,78 @@ def continue_discussion_endpoint():
         
         if use_document and session.get('document_uploaded', False):
             logger.info("Using document reference for discussion continuation")
-            document_text = session.get('document_text', '')
-            
-            # テキストからベクトルストアを再作成
-            from agents.document_processor import split_text, create_vector_store
-            chunks = split_text(document_text)
-            vector_store = create_vector_store(chunks, api_key)
-            
-            if not vector_store:
-                logger.warning("Failed to create vector store for continuation")
-                # 継続はするが、文書参照なしで
-                logger.info("Continuing without document reference")
+            vector_store_pickle = session.get('vector_store', None)
+            try:
+                vector_store = pickle.loads(vector_store_pickle) if vector_store_pickle else None
+            except Exception as e:
+                logger.warning(f"Failed to load vector store: {str(e)}")
+                
+                # ドキュメントがセッションにある場合は再作成
+                document_text = session.get('document_text', '')
+                if document_text:
+                    from agents.document_processor import split_text, create_vector_store
+                    chunks = split_text(document_text)
+                    vector_store = create_vector_store(chunks, api_key)
+                
+                if not vector_store:
+                    logger.warning("Failed to create vector store for continuation")
+                    # 継続はするが、文書参照なしで
+                    logger.info("Continuing without document reference")
         
-        # 議論を継続
-        logger.info(f"Continuing discussion on topic: {topic} for {num_additional_turns} additional turns")
-        continued_discussion = continue_discussion(
-            api_key=api_key,
-            discussion_data=discussion_data,
-            topic=topic,
-            roles=roles,
-            num_additional_turns=num_additional_turns,
-            language=language,
-            vector_store=vector_store
-        )
-        
-        logger.info(f"Successfully continued discussion, new total: {len(continued_discussion)} messages")
-        return jsonify({
-            'success': True,
-            'discussion': continued_discussion
-        })
+        # 新規リクエストの場合は最初のメッセージを、継続リクエストの場合は次のメッセージを生成
+        if is_new_request:
+            logger.info(f"Starting new continuation sequence for topic: {topic}")
+            
+            # 最初のメッセージのターン情報を設定
+            max_turns = current_turn + num_additional_turns
+            total_roles = len(roles)
+            total_iterations = total_roles * num_additional_turns
+            
+            # 一定数のターンにわたって生成を継続する代わりに、次のメッセージを生成
+            current_role = roles[current_role_index]
+            
+            # ターンベースでの継続開始をマーク
+            result = {
+                'message': None,
+                'next_turn': current_turn,
+                'next_role_index': current_role_index,
+                'is_complete': False,
+                'total_iterations': total_iterations,
+                'current_iteration': 0,
+                'success': True
+            }
+            
+            return jsonify(result)
+        else:
+            # 継続リクエストの場合、次のメッセージを生成
+            logger.info(f"Continuing discussion: Turn {current_turn+1}, Role index {current_role_index}")
+            
+            # ターンの総数と役割を取得
+            total_iterations = len(roles) * num_additional_turns
+            current_iteration = (current_turn * len(roles)) + current_role_index + 1
+            is_complete = current_iteration >= total_iterations
+            
+            # 次のターンを生成
+            result = generate_next_turn(
+                api_key=api_key,
+                topic=topic,
+                roles=roles,
+                current_discussion=discussion_data,
+                current_turn=current_turn,
+                current_role_index=current_role_index,
+                language=language,
+                vector_store=vector_store
+            )
+            
+            # 最後のターンかどうかをマーク
+            result['is_complete'] = is_complete
+            result['total_iterations'] = total_iterations
+            result['current_iteration'] = current_iteration
+            result['success'] = True
+            
+            logger.info(f"Generated next message in continuation: {current_iteration}/{total_iterations}")
+            
+            return jsonify(result)
         
     except Exception as e:
         error_message = str(e)
