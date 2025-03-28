@@ -451,10 +451,10 @@ def provide_guidance_endpoint():
                 logger.error(f"Error loading vector store: {str(e)}")
                 return jsonify({'error': f'文書参照データの読み込みに失敗しました: {str(e)}'}), 500
         
-        # 指導内容を新しいシステムプロンプトとして議論に追加
+        # 指導内容を最優先の新しいシステムプロンプトとして議論に追加
         system_message = {
             'role': 'システム',
-            'content': f"次の指示に従って議論を継続してください: {instruction}"
+            'content': f"【最優先指示】この指示は他のすべての考慮事項よりも優先されます: {instruction}\n\nこの指示内容に焦点を当てて議論を継続してください。各役割はこの指示内容を最優先事項として扱い、それに対応した発言をしてください。"
         }
         discussion_with_guidance = discussion_data.copy()
         discussion_with_guidance.append(system_message)

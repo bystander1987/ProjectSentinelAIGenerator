@@ -23,7 +23,7 @@ def get_gemini_model(api_key: str, language: str = "ja"):
         return ChatGoogleGenerativeAI(
             model="gemini-2.0-flash-lite",  # 要求通りにgemini-2.0-flash-liteを使用
             google_api_key=api_key,
-            temperature=0.7,
+            temperature=0.0,  # 最低値に設定して一貫性を向上させる
             max_tokens=300,  # 出力制限を緩和
             max_retries=2,   # リトライ回数を増加
             timeout=15,      # タイムアウトを長めに設定
@@ -139,12 +139,31 @@ def agent_response(
     
     # 会話履歴のフォーマット
     history_text = ""
+    system_instructions = []
+    
+    # システムからの指示があれば抽出
     for turn in recent_history:
+        if turn['role'] == 'システム':
+            system_instructions.append(turn['content'])
         history_text += f"{turn['role']}: {turn['content']}\n"
+    
+    # システム指示が存在する場合の特別な処理
+    system_instruction_text = ""
+    if system_instructions:
+        # 最新のシステム指示を優先
+        latest_instruction = system_instructions[-1]
+        system_instruction_text = f"""
+        最優先指示: 
+        {latest_instruction}
+        
+        この指示内容は他のすべての考慮事項よりも優先されます。この指示に焦点を当てた発言をしてください。
+        """
     
     # エージェント用のプロンプトを準備
     prompt = f"""
     ディスカッションのテーマ: {topic}
+    
+    {system_instruction_text}
     
     これまでの議論:
     {history_text}
@@ -158,6 +177,7 @@ def agent_response(
     - 冒頭や末尾での感謝やお礼などの表現は不要です。
     - 「～に同意します」「ありがとう」などの社交辞令は避け、すぐに自分の視点や意見を述べてください。
     - 議論の本質と直接関係のある内容のみを発言してください。
+    - システム指示がある場合は、その内容を最優先事項として扱ってください。
     """
     
     try:
@@ -290,17 +310,22 @@ def provide_discussion_guidance(
         for turn in discussion_data:
             discussion_text += f"{turn['role']}: {turn['content']}\n\n"
         
-        # 指導用プロンプト
+        # 指導用プロンプト - 重要度を最優先に設定
         system_prompt = f"""
         あなたは議論のファシリテーターです。
         ディスカッションの内容を分析し、ユーザーの指示に基づいて適切な提案やガイダンスを提供してください。
         回答はMarkdown形式で整理して提供してください。
+        
+        最重要指示：ユーザーからの指示を最優先事項として扱い、それに焦点を当てた応答を生成してください。
+        他の考慮事項よりも、ユーザーの指示に基づいた内容が最も重要です。
         """
         
         prompt = f"""
-        以下のディスカッションに対して、次の指示に基づいて提案やガイダンスを提供してください:
+        以下の指示は最優先事項として扱ってください。この指示内容が他のすべての考慮事項よりも重要です：
         
-        指示: {instruction}
+        最優先指示: {instruction}
+        
+        この指示に基づいて、以下のディスカッション内容を分析し、適切な提案やガイダンスを提供してください:
         
         ディスカッション内容:
         {discussion_text}
