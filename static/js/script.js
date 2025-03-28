@@ -293,12 +293,30 @@ document.addEventListener('DOMContentLoaded', function() {
         for (let i = startIndex; i < discussion.length; i++) {
             const msg = discussion[i];
             const isEven = i % 2 === 0;
+            const isSystem = msg.role === 'システム';
+            
+            // システムメッセージは特別な形式で表示
+            if (isSystem) {
+                const systemMsg = document.createElement('div');
+                systemMsg.className = 'system-message my-3 py-2 px-3 bg-warning bg-opacity-10 rounded border border-warning';
+                systemMsg.innerHTML = `
+                    <div class="fw-bold mb-1">システムメッセージ</div>
+                    <div class="system-content">${markdownToHtml(msg.content)}</div>
+                `;
+                discussionContainer.appendChild(systemMsg);
+                
+                // 最新のメッセージが見えるようにスクロール
+                systemMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                continue; // システムメッセージを処理したらループの次の反復へ
+            }
+            
+            // 通常のメッセージバブル
             const bubble = document.createElement('div');
             bubble.className = `discussion-bubble ${isEven ? 'left' : 'right'} mb-3`;
             
             bubble.innerHTML = `
                 <div class="role-tag">${msg.role}</div>
-                <div class="message-content">${msg.content}</div>
+                <div class="message-content">${markdownToHtml(msg.content)}</div>
             `;
             
             discussionContainer.appendChild(bubble);
