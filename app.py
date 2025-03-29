@@ -210,17 +210,14 @@ def create_discussion_with_document():
             
         # リクエストデータの取得
         data = request.json
-        topic = data.get('topic', '')
+        base_topic = data.get('topic', '')
         num_turns = int(data.get('num_turns', 3))
         roles = data.get('roles', [])
         language = data.get('language', 'ja')
         
         # 基本的な検証（通常の議論生成と同じ）
-        if not topic:
+        if not base_topic:
             return jsonify({'error': '議題を入力してください'}), 400
-            
-        if len(topic) > 100:
-            topic = topic[:97] + '...'
         
         if not roles or len(roles) < 2:
             return jsonify({'error': '少なくとも2つの役割が必要です'}), 400
@@ -275,9 +272,16 @@ def create_discussion_with_document():
         if not vector_store:
             logger.error("Failed to create vector store from document")
             return jsonify({'error': 'ドキュメントからベクトルストアを作成できませんでした。'}), 500
+            
+        # ドキュメントテキストとトピックを組み合わせて新しいトピックを作成
+        # 文書内容の先頭部分を追加して、文脈を強化
+        document_preview = document_text[:1000] if len(document_text) > 1000 else document_text
+        topic = f"{base_topic}\n\n文書内容:\n{document_preview}"
+        
+        logger.info(f"Created enhanced topic with document content")
         
         # RAG対応の議論生成
-        logger.info(f"Starting RAG-enhanced discussion generation for topic: {topic}")
+        logger.info(f"Starting RAG-enhanced discussion generation for topic: {base_topic}")
         discussion_data = generate_discussion(
             api_key=api_key,
             topic=topic,
@@ -447,14 +451,36 @@ def provide_guidance_endpoint():
         
         # 文書参照を使用するかどうかを確認
         vector_store = None
+        document_text = ""
         if use_document and session.get('document_uploaded', False):
             try:
-                vector_store_pickle = session.get('vector_store', None)
-                vector_store = pickle.loads(vector_store_pickle) if vector_store_pickle else None
+                # ドキュメントテキストを取得
+                document_text = session.get('document_text', '')
+                
+                # テキストから再度ベクトルストアを作成
+                from agents.document_processor import split_text, create_vector_store
+                
+                # テキストをチャンクに分割
+                chunks = split_text(document_text)
+                
+                # ベクトルストアを作成
+                vector_store = create_vector_store(chunks, api_key)
+                
+                if not vector_store:
+                    logger.error("Failed to create vector store from document for guidance")
+                    return jsonify({'error': 'ドキュメントからベクトルストアを作成できませんでした。'}), 500
+                    
                 logger.info("Using document reference for guided discussion continuation")
             except Exception as e:
-                logger.error(f"Error loading vector store: {str(e)}")
-                return jsonify({'error': f'文書参照データの読み込みに失敗しました: {str(e)}'}), 500
+                logger.error(f"Error preparing document data: {str(e)}")
+                return jsonify({'error': f'文書参照データの準備に失敗しました: {str(e)}'}), 500
+        
+        # ドキュメントテキストとトピックを組み合わせて新しいトピックを作成（文書参照時のみ）
+        enhanced_topic = topic
+        if use_document and document_text:
+            document_preview = document_text[:1000] if len(document_text) > 1000 else document_text
+            enhanced_topic = f"{topic}\n\n文書内容:\n{document_preview}"
+            logger.info(f"Created enhanced topic with document content for guidance")
         
         # 指導内容を提供して議論の方向性を改善
         logger.info(f"Providing guidance for discussion on topic: {topic}")
@@ -464,7 +490,7 @@ def provide_guidance_endpoint():
         guidance_result = provide_discussion_guidance(
             api_key=api_key,
             discussion_data=discussion_data,
-            topic=topic,
+            topic=enhanced_topic,
             instruction=instruction,
             language=language,
             vector_store=vector_store
@@ -629,20 +655,28 @@ def generate_next_turn_endpoint():
         
         # ベクトルストア（RAG）を取得
         vector_store = None
+        document_text = ""
         if 'document_uploaded' in session and session['document_uploaded']:
             # ドキュメントテキストからベクトルストアを再作成
-            from agents.document_processor import create_vector_store
+            from agents.document_processor import create_vector_store, split_text
             document_text = session.get('document_text', '')
             if document_text:
                 logger.info("Recreating vector store from session document")
-                text_chunks = document_text.split('\n\n')  # 単純化のため段落で分割
-                vector_store = create_vector_store(text_chunks, api_key)
+                chunks = split_text(document_text)
+                vector_store = create_vector_store(chunks, api_key)
+        
+        # ドキュメントテキストとトピックを組み合わせて新しいトピックを作成
+        enhanced_topic = topic
+        if document_text:
+            document_preview = document_text[:1000] if len(document_text) > 1000 else document_text
+            enhanced_topic = f"{topic}\n\n文書内容:\n{document_preview}"
+            logger.info(f"Created enhanced topic with document content for next turn")
                 
         # 次のターンを生成
         from agents.discussion import generate_next_turn
         result = generate_next_turn(
             api_key=api_key,
-            topic=topic,
+            topic=enhanced_topic,
             roles=roles,
             current_discussion=current_discussion,
             current_turn=current_turn,
@@ -726,27 +760,35 @@ def continue_discussion_endpoint():
             
         # 文書参照を使用するかどうかを確認
         vector_store = None
+        document_text = ""
         use_document = data.get('use_document', False)
         
         if use_document and session.get('document_uploaded', False):
             logger.info("Using document reference for discussion continuation")
-            vector_store_pickle = session.get('vector_store', None)
-            try:
-                vector_store = pickle.loads(vector_store_pickle) if vector_store_pickle else None
-            except Exception as e:
-                logger.warning(f"Failed to load vector store: {str(e)}")
+            # ドキュメントテキストを取得
+            document_text = session.get('document_text', '')
+            
+            if document_text:
+                # テキストから再度ベクトルストアを作成
+                from agents.document_processor import split_text, create_vector_store
                 
-                # ドキュメントがセッションにある場合は再作成
-                document_text = session.get('document_text', '')
-                if document_text:
-                    from agents.document_processor import split_text, create_vector_store
-                    chunks = split_text(document_text)
-                    vector_store = create_vector_store(chunks, api_key)
+                # テキストをチャンクに分割
+                chunks = split_text(document_text)
+                
+                # ベクトルストアを作成
+                vector_store = create_vector_store(chunks, api_key)
                 
                 if not vector_store:
                     logger.warning("Failed to create vector store for continuation")
                     # 継続はするが、文書参照なしで
                     logger.info("Continuing without document reference")
+                    
+        # ドキュメントテキストとトピックを組み合わせて新しいトピックを作成（文書参照時のみ）
+        enhanced_topic = topic
+        if use_document and document_text:
+            document_preview = document_text[:1000] if len(document_text) > 1000 else document_text
+            enhanced_topic = f"{topic}\n\n文書内容:\n{document_preview}"
+            logger.info(f"Created enhanced topic with document content for continuation")
         
         # 新規リクエストの場合は最初のメッセージを、継続リクエストの場合は次のメッセージを生成
         if is_new_request:
@@ -784,7 +826,7 @@ def continue_discussion_endpoint():
             # 次のターンを生成
             result = generate_next_turn(
                 api_key=api_key,
-                topic=topic,
+                topic=enhanced_topic,
                 roles=roles,
                 current_discussion=discussion_data,
                 current_turn=current_turn,
