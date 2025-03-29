@@ -77,10 +77,14 @@ def create_role_prompt(role: str, topic: str, context: Optional[str] = None) -> 
     # 参考文書がある場合は追加
     if context:
         context_prompt = f"""
-    次の参考文書を考慮に入れて回答してください。この文書に記載されている情報を活用して、適切な発言をしてください。
+    次の参考文書を必ず考慮に入れて回答してください。この文書に記載されている情報を議論の中心に置き、具体的な内容に言及してください。
+    
+    発言には必ず参考文書から少なくとも1つ以上の具体的な情報を引用してください。「参考文書によれば〜」「文書の〜の部分に記載されているように〜」など、明示的に参考文書を引用してください。
     
     参考文書:
     {context}
+    
+    あなたの役割と参考文書の内容に基づいて、トピック「{topic}」について議論してください。参考文書の内容を中心に発言を組み立てるよう努めてください。
     """
         return base_prompt + context_prompt
     
@@ -110,19 +114,34 @@ def agent_response(
     context = None
     if vector_store:
         try:
-            # 直近の会話と役割から検索クエリを作成
-            recent_history_text = ""
-            if discussion_history:
-                for message in discussion_history[-3:]:  # 直近3つのメッセージを使用
-                    recent_history_text += f"{message['content']} "
+            # トピックと役割に特化した検索クエリを作成
+            topic_keywords = topic.replace("　", " ").split()  # 日本語のスペースを処理
+            role_keywords = role.split("（")[0] if "（" in role else role  # 役割の括弧前の部分を使用
             
-            search_query = f"{topic} {role} {recent_history_text}"
-            # 関連ドキュメントを検索
+            # 議論履歴から重要なキーワードを抽出
+            recent_history_keywords = ""
+            if discussion_history:
+                # 直近のメッセージから重要なフレーズを抽出（最大5つ）
+                recent_messages = discussion_history[-3:] if len(discussion_history) >= 3 else discussion_history
+                for message in recent_messages:
+                    content = message['content']
+                    # 短い単語や一般的な単語を除外し、重要そうなフレーズを取得
+                    important_phrases = [p for p in content.split("。") if len(p) > 8][:2]
+                    recent_history_keywords += " ".join(important_phrases) + " "
+            
+            # 主要キーワードを強調し、より具体的な検索クエリを構築
+            search_query = f"{topic} {role_keywords} {recent_history_keywords}"
+            
+            logger.info(f"RAG search query: {search_query[:100]}...")
+            
+            # 関連ドキュメントを検索（より多くの結果を取得してフィルタリング）
             from agents.document_processor import search_documents, create_context_from_documents
-            relevant_docs = search_documents(vector_store, search_query, top_k=3)
+            relevant_docs = search_documents(vector_store, search_query, top_k=5)
+            
             if relevant_docs:
-                context = create_context_from_documents(relevant_docs, max_tokens=1000)
-                logger.info(f"Retrieved relevant context for {role}")
+                # 検索結果をより広範囲に取得してコンテキストを構築
+                context = create_context_from_documents(relevant_docs, max_tokens=1500)
+                logger.info(f"Retrieved relevant context for {role} - {len(context)} chars")
         except Exception as e:
             logger.warning(f"Failed to retrieve context from vector store: {str(e)}")
     
