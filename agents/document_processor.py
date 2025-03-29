@@ -10,6 +10,7 @@ from typing import List, Dict, Union, Optional
 # ドキュメント処理用のライブラリ
 import PyPDF2
 from docx import Document
+import pandas as pd
 import tiktoken
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # サポートされるファイル形式
-SUPPORTED_FORMATS = ['.pdf', '.txt', '.docx']
+SUPPORTED_FORMATS = ['.pdf', '.txt', '.docx', '.xlsx']
 
 def count_tokens(text: str) -> int:
     """テキストのトークン数をカウントする"""
@@ -74,6 +75,36 @@ def extract_text_from_txt(file_path: str) -> str:
         logger.error(f"Failed to extract text from TXT: {str(e)}")
         return ""
 
+def extract_text_from_xlsx(file_path: str) -> str:
+    """Excelファイル（.xlsx）からテキストを抽出する"""
+    try:
+        # Excelファイルを読み込む
+        excel_data = pd.read_excel(file_path, sheet_name=None)
+        text = ""
+        
+        # すべてのシートを処理
+        for sheet_name, sheet_data in excel_data.items():
+            text += f"=== シート: {sheet_name} ===\n\n"
+            
+            # 数値データを含む列を文字列に変換
+            sheet_data = sheet_data.astype(str)
+            
+            # 列名（ヘッダー）を追加
+            headers = sheet_data.columns.tolist()
+            text += "| " + " | ".join(headers) + " |\n"
+            text += "| " + " | ".join(["---" for _ in headers]) + " |\n"
+            
+            # 各行のデータを追加
+            for _, row in sheet_data.iterrows():
+                text += "| " + " | ".join(row.values) + " |\n"
+            
+            text += "\n\n"
+        
+        return text
+    except Exception as e:
+        logger.error(f"Failed to extract text from XLSX: {str(e)}")
+        return ""
+
 def extract_text_from_file(file_path: str) -> str:
     """ファイルの拡張子に基づいてテキスト抽出関数を選択する"""
     extension = os.path.splitext(file_path)[1].lower()
@@ -84,6 +115,8 @@ def extract_text_from_file(file_path: str) -> str:
         return extract_text_from_docx(file_path)
     elif extension == '.txt':
         return extract_text_from_txt(file_path)
+    elif extension == '.xlsx':
+        return extract_text_from_xlsx(file_path)
     else:
         logger.error(f"Unsupported file format: {extension}")
         return ""
