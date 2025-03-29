@@ -271,9 +271,64 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!isContinuation) {
             discussionContainer.innerHTML = '';
             discussionContainer.classList.remove('discussion-continued');
+            
+            // ドキュメントが存在する場合、最初に表示
+            if (document.getElementById('document-info').classList.contains('d-flex')) {
+                // ドキュメントの内容を表示
+                fetch('/get-document-text', {
+                    method: 'GET'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.document_text) {
+                        const documentCard = document.createElement('div');
+                        documentCard.className = 'document-display card mb-4 border-info';
+                        documentCard.innerHTML = `
+                            <div class="card-header bg-info bg-opacity-25 d-flex justify-content-between align-items-center">
+                                <strong><i class="bi bi-file-text"></i> アップロードされた文書内容</strong>
+                                <button type="button" class="btn btn-sm btn-outline-info toggle-document-btn">
+                                    <i class="bi bi-arrows-collapse"></i> 折りたたむ
+                                </button>
+                            </div>
+                            <div class="card-body document-body">
+                                <div class="document-content" style="max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(data.document_text)}</div>
+                            </div>
+                        `;
+                        discussionContainer.appendChild(documentCard);
+                        
+                        // 折りたたみボタンの機能を実装
+                        const toggleBtn = documentCard.querySelector('.toggle-document-btn');
+                        const docBody = documentCard.querySelector('.document-body');
+                        toggleBtn.addEventListener('click', function() {
+                            if (docBody.style.display === 'none') {
+                                docBody.style.display = 'block';
+                                toggleBtn.innerHTML = '<i class="bi bi-arrows-collapse"></i> 折りたたむ';
+                            } else {
+                                docBody.style.display = 'none';
+                                toggleBtn.innerHTML = '<i class="bi bi-arrows-expand"></i> 展開する';
+                            }
+                        });
+                        
+                        // トピックヘッダーをディスカッション上部に設定
+                        const topicHeader = document.createElement('div');
+                        topicHeader.className = 'topic-header alert alert-primary mt-4';
+                        topicHeader.innerHTML = `
+                            <h5 class="mb-0">ディスカッション: ${topic}</h5>
+                            <p class="mb-0 small">文書に基づいたディスカッションを開始します</p>
+                        `;
+                        discussionContainer.appendChild(topicHeader);
+                    }
+                })
+                .catch(error => {
+                    console.error("文書内容の取得中にエラー:", error);
+                });
+            }
         } else {
             discussionContainer.classList.add('discussion-continued');
         }
+        
+        // トピックヘッダーを表示セクションに設定
+        discussionTopicHeader.textContent = `ディスカッション: ${topic}`;
         
         // 継続マーカーが必要かどうかを確認
         const needsContinuationMarker = isContinuation && 
