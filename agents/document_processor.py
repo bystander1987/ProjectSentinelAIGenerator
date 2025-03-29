@@ -138,11 +138,33 @@ def split_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> L
 def create_vector_store(chunks: List[str], api_key: str) -> Optional[FAISS]:
     """テキストチャンクからベクトルストアを作成する"""
     try:
+        # Gemini-2.0-flash-lite モデルに最適化したエンベディング設定
         embeddings = GoogleGenerativeAIEmbeddings(
             model="models/embedding-001",
-            google_api_key=api_key
+            google_api_key=api_key,
+            task_type="retrieval_query",
+            dimensions=768  # Gemini エンベディングに適した次元数
         )
-        vector_store = FAISS.from_texts(chunks, embeddings)
+        
+        # より多くのRAGコンテキストを提供するために、チャンクごとにメタデータを追加
+        texts_with_metadata = []
+        for i, chunk in enumerate(chunks):
+            # 各チャンクに意味のある識別子とメタデータを付与
+            metadata = {
+                "chunk_id": f"chunk_{i}",
+                "priority": "high",
+                "token_count": count_tokens(chunk)
+            }
+            texts_with_metadata.append((chunk, metadata))
+        
+        # メタデータ付きでベクトルストアを作成
+        vector_store = FAISS.from_texts(
+            [t[0] for t in texts_with_metadata],
+            embeddings,
+            metadatas=[t[1] for t in texts_with_metadata]
+        )
+        
+        logger.info(f"成功: ベクトルストアを作成しました。チャンク数: {len(chunks)}")
         return vector_store
     except Exception as e:
         logger.error(f"Failed to create vector store: {str(e)}")
@@ -234,10 +256,30 @@ def search_documents(vector_store: FAISS, query: str, top_k: int = 3) -> List[st
         List[str]: 関連するテキストチャンクのリスト
     """
     try:
-        results = vector_store.similarity_search(query, k=top_k)
-        return [doc.page_content for doc in results]
+        # より関連性の高い結果を取得するために、より多くの結果を検索して後でフィルタリング
+        search_results = vector_store.similarity_search(query, k=top_k * 2)
+        
+        # 結果をフィルタリングと正規化
+        filtered_results = []
+        seen_content = set()
+        
+        for doc in search_results:
+            content = doc.page_content.strip()
+            
+            # 重複を除外し、内容のある結果のみを含める
+            if content and content not in seen_content and len(content) > 20:
+                filtered_results.append(content)
+                seen_content.add(content)
+            
+            # 必要な数の結果を得たら停止
+            if len(filtered_results) >= top_k:
+                break
+        
+        logger.info(f"検索クエリ「{query[:30]}...」に対して {len(filtered_results)} 件の関連ドキュメントを取得しました。")
+        return filtered_results
+        
     except Exception as e:
-        logger.error(f"Document search error: {str(e)}")
+        logger.error(f"ドキュメント検索エラー: {str(e)}")
         return []
 
 def create_context_from_documents(chunks: List[str], max_tokens: int = 2000) -> str:
@@ -251,15 +293,38 @@ def create_context_from_documents(chunks: List[str], max_tokens: int = 2000) -> 
     Returns:
         str: コンテキスト文字列
     """
+    if not chunks:
+        return ""
+    
+    # チャンクを重要度でソート (短すぎるチャンクや長すぎるチャンクは優先度を下げる)
+    def chunk_importance(chunk):
+        length = len(chunk)
+        # 理想的な長さ: 100〜500文字
+        if 100 <= length <= 500:
+            return 2  # 高優先度
+        elif 50 <= length <= 1000:
+            return 1  # 中優先度
+        else:
+            return 0  # 低優先度
+    
+    # 重要度に基づいてチャンクをソート (降順)
+    sorted_chunks = sorted(chunks, key=chunk_importance, reverse=True)
+    
+    # コンテキストの構築
     context = ""
     current_tokens = 0
     
-    for chunk in chunks:
+    # まず高優先度のチャンクを追加
+    for chunk in sorted_chunks:
         chunk_tokens = count_tokens(chunk)
-        if current_tokens + chunk_tokens > max_tokens:
-            break
         
-        context += chunk + "\n\n"
+        # トークン制限を超える場合はスキップ
+        if current_tokens + chunk_tokens > max_tokens:
+            continue
+        
+        # チャンクごとにセクション番号をつけて明確に区切る
+        context += f"[情報{len(context.split('[情報'))}] " + chunk.strip() + "\n\n"
         current_tokens += chunk_tokens
     
+    logger.info(f"合計 {len(sorted_chunks)} チャンクからコンテキストを作成しました。使用トークン: {current_tokens}/{max_tokens}")
     return context.strip()

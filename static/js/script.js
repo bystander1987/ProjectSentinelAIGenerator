@@ -297,6 +297,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const msg = discussion[i];
             const isEven = i % 2 === 0;
             const isSystem = msg.role === 'システム';
+            const isConsultant = msg.role === 'コンサルタント';
             
             // システムメッセージは特別な形式で表示
             if (isSystem) {
@@ -311,6 +312,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 最新のメッセージが見えるようにスクロール
                 systemMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 continue; // システムメッセージを処理したらループの次の反復へ
+            }
+            
+            // コンサルタントの分析は特別なスタイルで表示
+            if (isConsultant) {
+                const consultantMsg = document.createElement('div');
+                consultantMsg.className = 'consultant-message my-4 py-3 px-4 bg-info bg-opacity-10 rounded border border-info';
+                consultantMsg.innerHTML = `
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="bi bi-graph-up me-2"></i>
+                        <div class="fw-bold">コンサルタント分析</div>
+                    </div>
+                    <div class="consultant-content">${markdownToHtml(msg.content)}</div>
+                `;
+                discussionContainer.appendChild(consultantMsg);
+                
+                // 最新のメッセージが見えるようにスクロール
+                consultantMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                continue; // コンサルタントメッセージを処理したらループの次の反復へ
             }
             
             // 通常のメッセージバブル
@@ -581,6 +600,21 @@ document.addEventListener('DOMContentLoaded', function() {
     function getDiscussionText() {
         let text = `ディスカッション: ${discussionTopicHeader.textContent}\n\n`;
         
+        // システムメッセージを含める
+        const systemMessages = discussionContainer.querySelectorAll('.system-message');
+        systemMessages.forEach(msg => {
+            const content = msg.querySelector('.system-content').textContent;
+            text += `【システムメッセージ】\n${content}\n\n`;
+        });
+        
+        // コンサルタント分析を含める
+        const consultantMessages = discussionContainer.querySelectorAll('.consultant-message');
+        consultantMessages.forEach(msg => {
+            const content = msg.querySelector('.consultant-content').textContent;
+            text += `【コンサルタント分析】\n${content}\n\n`;
+        });
+        
+        // 通常の会話バブル
         const bubbles = discussionContainer.querySelectorAll('.discussion-bubble');
         bubbles.forEach(bubble => {
             const role = bubble.querySelector('.role-tag').textContent;
@@ -941,6 +975,18 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // ディスカッションデータを収集
         const discussionData = [];
+        
+        // コンサルタント分析を含める
+        const consultantMessages = discussionContainer.querySelectorAll('.consultant-message');
+        consultantMessages.forEach(msg => {
+            const content = msg.querySelector('.consultant-content').textContent;
+            discussionData.push({
+                role: "コンサルタント",
+                content: content
+            });
+        });
+        
+        // 通常のディスカッションバブル
         bubbles.forEach(bubble => {
             const role = bubble.querySelector('.role-tag').textContent;
             const content = bubble.querySelector('.message-content').textContent;
@@ -1049,6 +1095,18 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // ディスカッションデータを収集
         const discussionData = [];
+        
+        // コンサルタント分析を含める
+        const consultantMessages = discussionContainer.querySelectorAll('.consultant-message');
+        consultantMessages.forEach(msg => {
+            const content = msg.querySelector('.consultant-content').textContent;
+            discussionData.push({
+                role: "コンサルタント",
+                content: content
+            });
+        });
+        
+        // 通常のディスカッションバブル
         bubbles.forEach(bubble => {
             const role = bubble.querySelector('.role-tag').textContent;
             const content = bubble.querySelector('.message-content').textContent;
@@ -1203,6 +1261,18 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 議論データを収集
         const discussionData = [];
+        
+        // コンサルタント分析を含める
+        const consultantMessages = discussionContainer.querySelectorAll('.consultant-message');
+        consultantMessages.forEach(msg => {
+            const content = msg.querySelector('.consultant-content').textContent;
+            discussionData.push({
+                role: "コンサルタント",
+                content: content
+            });
+        });
+        
+        // 通常のディスカッションバブル
         const bubbles = discussionContainer.querySelectorAll('.discussion-bubble');
         bubbles.forEach(bubble => {
             const role = bubble.querySelector('.role-tag').textContent;
@@ -1384,6 +1454,18 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 議論データを収集
         const discussionData = [];
+        
+        // コンサルタント分析を含める
+        const consultantMessages = discussionContainer.querySelectorAll('.consultant-message');
+        consultantMessages.forEach(msg => {
+            const content = msg.querySelector('.consultant-content').textContent;
+            discussionData.push({
+                role: "コンサルタント",
+                content: content
+            });
+        });
+        
+        // 通常のディスカッションバブル
         const bubbles = discussionContainer.querySelectorAll('.discussion-bubble');
         bubbles.forEach(bubble => {
             const role = bubble.querySelector('.role-tag').textContent;
