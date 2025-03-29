@@ -197,6 +197,8 @@ def process_uploaded_file(file, api_key: str) -> Dict[str, Union[bool, str, FAIS
             result["message"] = f"サポートされていないファイル形式です。サポート形式: {', '.join(SUPPORTED_FORMATS)}"
             return result
         
+        logger.info(f"Processing file: {filename} (type: {extension})")
+        
         # 一時ファイルとして保存
         with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as temp_file:
             file.save(temp_file.name)
@@ -207,21 +209,37 @@ def process_uploaded_file(file, api_key: str) -> Dict[str, Union[bool, str, FAIS
             
             if not text:
                 result["message"] = "ファイルからテキストを抽出できませんでした。"
+                logger.error(f"Failed to extract text from {filename}")
                 return result
+            
+            logger.info(f"Successfully extracted {len(text)} characters from {filename}")
+            
+            # 文書内容のサンプルをログに記録（デバッグ用）
+            if len(text) > 200:
+                sample_text = text[:200] + "..."
+            else:
+                sample_text = text
+            logger.info(f"Sample text from document: {sample_text}")
             
             # テキストを分割
             chunks = split_text(text)
             
             if not chunks:
                 result["message"] = "テキストを適切に分割できませんでした。"
+                logger.error("Failed to split text into chunks")
                 return result
+            
+            logger.info(f"Text split into {len(chunks)} chunks")
             
             # ベクトルストアを作成
             vector_store = create_vector_store(chunks, api_key)
             
             if not vector_store:
                 result["message"] = "ベクトルストアの作成に失敗しました。"
+                logger.error("Failed to create vector store")
                 return result
+            
+            logger.info(f"Successfully created vector store with {len(chunks)} chunks")
             
             # 成功
             result["success"] = True
@@ -256,8 +274,14 @@ def search_documents(vector_store: FAISS, query: str, top_k: int = 3) -> List[st
         List[str]: 関連するテキストチャンクのリスト
     """
     try:
+        logger.info(f"Searching for documents relevant to: '{query}'")
+        
         # より関連性の高い結果を取得するために、より多くの結果を検索して後でフィルタリング
-        search_results = vector_store.similarity_search(query, k=top_k * 2)
+        # 文書が短い場合は、もっと多くの結果を取得して結合する可能性がある
+        expanded_top_k = max(top_k * 3, 15)  # より多くの候補を取得
+        
+        search_results = vector_store.similarity_search(query, k=expanded_top_k)
+        logger.info(f"Retrieved {len(search_results)} initial results for query")
         
         # 結果をフィルタリングと正規化
         filtered_results = []
@@ -268,6 +292,15 @@ def search_documents(vector_store: FAISS, query: str, top_k: int = 3) -> List[st
             
             # 重複を除外し、内容のある結果のみを含める
             if content and content not in seen_content and len(content) > 20:
+                # メタデータがある場合はログに記録
+                if hasattr(doc, 'metadata') and doc.metadata:
+                    metadata_str = str(doc.metadata)
+                    logger.info(f"Document metadata: {metadata_str}")
+                
+                # 内容の一部をログに記録
+                content_preview = content[:100] + "..." if len(content) > 100 else content
+                logger.info(f"Adding relevant chunk: {content_preview}")
+                
                 filtered_results.append(content)
                 seen_content.add(content)
             
@@ -275,7 +308,33 @@ def search_documents(vector_store: FAISS, query: str, top_k: int = 3) -> List[st
             if len(filtered_results) >= top_k:
                 break
         
-        logger.info(f"検索クエリ「{query[:30]}...」に対して {len(filtered_results)} 件の関連ドキュメントを取得しました。")
+        # 十分な結果が得られない場合、追加の取得を試みる
+        if len(filtered_results) < top_k / 2 and top_k > 2:
+            logger.warning(f"Retrieved only {len(filtered_results)} relevant results, less than expected")
+            
+            # 検索クエリの拡張を試みる
+            expanded_query = f"{query} 重要 情報 データ 分析"
+            logger.info(f"Trying with expanded query: '{expanded_query}'")
+            
+            additional_results = vector_store.similarity_search(expanded_query, k=top_k)
+            
+            for doc in additional_results:
+                content = doc.page_content.strip()
+                if content and content not in seen_content and len(content) > 20:
+                    filtered_results.append(content)
+                    seen_content.add(content)
+                
+                if len(filtered_results) >= top_k:
+                    break
+        
+        if filtered_results:
+            logger.info(f"Successfully retrieved {len(filtered_results)} relevant document chunks")
+            # サンプルとして最初のチャンクの一部をログに記録
+            sample = filtered_results[0][:100] + "..." if len(filtered_results[0]) > 100 else filtered_results[0]
+            logger.info(f"Sample content: {sample}")
+        else:
+            logger.warning("No relevant document chunks found for the query")
+        
         return filtered_results
         
     except Exception as e:
@@ -294,37 +353,85 @@ def create_context_from_documents(chunks: List[str], max_tokens: int = 2000) -> 
         str: コンテキスト文字列
     """
     if not chunks:
+        logger.warning("No document chunks provided for context creation")
         return ""
     
-    # チャンクを重要度でソート (短すぎるチャンクや長すぎるチャンクは優先度を下げる)
-    def chunk_importance(chunk):
-        length = len(chunk)
-        # 理想的な長さ: 100〜500文字
-        if 100 <= length <= 500:
-            return 2  # 高優先度
-        elif 50 <= length <= 1000:
-            return 1  # 中優先度
-        else:
-            return 0  # 低優先度
+    logger.info(f"Creating context from {len(chunks)} document chunks (max tokens: {max_tokens})")
     
-    # 重要度に基づいてチャンクをソート (降順)
-    sorted_chunks = sorted(chunks, key=chunk_importance, reverse=True)
+    # チャンクの品質と関連性を評価する関数
+    def chunk_quality(chunk):
+        length = len(chunk)
+        
+        # 基本スコア - 長さに基づく
+        if 100 <= length <= 800:
+            base_score = 3  # 最適な長さ
+        elif 50 <= length <= 1200:
+            base_score = 2  # 許容範囲
+        else:
+            base_score = 1  # 短すぎるか長すぎる
+        
+        # 追加のヒューリスティック - 数値データを含むチャンクを優先
+        has_numbers = any(c.isdigit() for c in chunk)
+        has_percentage = "%" in chunk
+        has_tables = "\t" in chunk or "|" in chunk or "表" in chunk
+        
+        # 特定のキーワードを含むチャンクも優先
+        important_keywords = ["重要", "課題", "分析", "結果", "データ", "調査", "結論"]
+        keyword_score = sum(1 for keyword in important_keywords if keyword in chunk)
+        
+        # 最終スコアの計算
+        additional_score = sum([
+            2 if has_numbers else 0,
+            1 if has_percentage else 0,
+            2 if has_tables else 0,
+            min(3, keyword_score)  # キーワードスコアは最大3とする
+        ])
+        
+        return base_score + additional_score
+    
+    # 優先順位に基づいてチャンクをソート
+    prioritized_chunks = sorted(chunks, key=chunk_quality, reverse=True)
+    
+    # より良いコンテキスト作成のために、チャンクに識別子を追加
+    # 同時にサンプルをログに記録
+    if prioritized_chunks:
+        sample_chunk = prioritized_chunks[0]
+        preview = sample_chunk[:100] + "..." if len(sample_chunk) > 100 else sample_chunk
+        logger.info(f"Top priority chunk: {preview}")
     
     # コンテキストの構築
     context = ""
     current_tokens = 0
+    added_chunks = 0
     
-    # まず高優先度のチャンクを追加
-    for chunk in sorted_chunks:
+    for i, chunk in enumerate(prioritized_chunks):
         chunk_tokens = count_tokens(chunk)
         
-        # トークン制限を超える場合はスキップ
+        # トークン制限をチェック
         if current_tokens + chunk_tokens > max_tokens:
+            # 最優先チャンクの場合は部分的に含める
+            if i < 3 and current_tokens < max_tokens * 0.7:
+                # より重要なチャンクの場合は、トークン制限内に収まるように部分的に含める
+                available_tokens = max_tokens - current_tokens - 50  # バッファを残す
+                if available_tokens > 200:  # 少なくとも200トークンが使える場合
+                    truncated_chunk = chunk[:int(len(chunk) * (available_tokens / chunk_tokens))]
+                    context += f"[文書セクション {added_chunks+1}] {truncated_chunk.strip()} [...続き省略]\n\n"
+                    current_tokens += count_tokens(truncated_chunk) + 20  # 見出し分も追加
+                    added_chunks += 1
             continue
         
-        # チャンクごとにセクション番号をつけて明確に区切る
-        context += f"[情報{len(context.split('[情報'))}] " + chunk.strip() + "\n\n"
-        current_tokens += chunk_tokens
+        # チャンクに識別子を追加して区別しやすくする
+        context += f"[文書セクション {added_chunks+1}] {chunk.strip()}\n\n"
+        current_tokens += chunk_tokens + 20  # 見出し分も追加
+        added_chunks += 1
     
-    logger.info(f"合計 {len(sorted_chunks)} チャンクからコンテキストを作成しました。使用トークン: {current_tokens}/{max_tokens}")
+    if added_chunks == 0:
+        logger.warning("Could not add any chunks to context due to token limit constraints")
+        # 最小限のコンテキストを提供
+        if chunks:
+            first_chunk = chunks[0]
+            truncated = first_chunk[:min(len(first_chunk), 500)]
+            context = f"[文書抜粋] {truncated.strip()} [...トークン制限のため省略]\n\n"
+    
+    logger.info(f"Created context with {added_chunks} chunks, using approximately {current_tokens} tokens")
     return context.strip()
