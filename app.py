@@ -850,5 +850,27 @@ def continue_discussion_endpoint():
         logger.error(f"Error continuing discussion: {error_message}")
         return jsonify({'error': f'議論の継続中にエラーが発生しました: {error_message}'}), 500
 
+@app.route('/get-document-text', methods=['GET'])
+def get_document_text():
+    """セッションに保存されているドキュメントのテキストを取得する"""
+    try:
+        if 'document_uploaded' in session and session['document_uploaded']:
+            document_text = session.get('document_text', '')
+            return jsonify({
+                'success': True,
+                'document_text': document_text
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'ドキュメントがアップロードされていません'
+            })
+    except Exception as e:
+        logger.error(f"Error retrieving document text: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'ドキュメントテキストの取得中にエラーが発生しました: {str(e)}'
+        })
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

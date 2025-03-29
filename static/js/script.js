@@ -861,6 +861,30 @@ document.addEventListener('DOMContentLoaded', function() {
             actionItemsContainer.classList.add('d-none');
             summaryContainer.classList.add('d-none');
             guidanceContainer.classList.add('d-none');
+            
+            // ドキュメントの内容を表示
+            fetch('/get-document-text', {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.document_text) {
+                    const documentCard = document.createElement('div');
+                    documentCard.className = 'card mb-3 bg-light border-info';
+                    documentCard.innerHTML = `
+                        <div class="card-header bg-info bg-opacity-25">
+                            <strong><i class="bi bi-file-text"></i> アップロードされた文書</strong>
+                        </div>
+                        <div class="card-body">
+                            <div class="document-content" style="max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-size: 0.85rem;">${data.document_text}</div>
+                        </div>
+                    `;
+                    discussionContainer.appendChild(documentCard);
+                }
+            })
+            .catch(error => {
+                console.error("文書内容の取得中にエラー:", error);
+            });
         }
         
         // ロード表示を更新
