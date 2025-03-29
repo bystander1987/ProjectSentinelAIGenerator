@@ -126,27 +126,16 @@ document.addEventListener('DOMContentLoaded', function() {
         showLoading(true);
         hideError();
         
-        // Update header
-        discussionTopicHeader.textContent = `ディスカッション: ${topic}`;
-        
         // Get selected language
         const language = document.getElementById('language').value;
         
-        // Clear previous discussion and disable export buttons
-        discussionContainer.innerHTML = '';
+        // ボタンを無効化
         exportTextBtn.disabled = true;
         copyTextBtn.disabled = true;
-        
-        // 新機能のボタンも無効化
         generateActionItemsBtn.disabled = true;
         summarizeDiscussionBtn.disabled = true;
         continueDiscussionBtn.disabled = true;
         provideGuidanceBtn.disabled = true;
-        
-        // コンテナを初期化
-        actionItemsContainer.classList.add('d-none');
-        summaryContainer.classList.add('d-none');
-        guidanceContainer.classList.add('d-none');
         
         // 状態を初期化
         currentDiscussion = [];
@@ -154,6 +143,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let currentRoleIndex = 0;
         
         // ターンごとに生成する処理を開始
+        // 注意：実際のUIの初期化は generateNextTurn の初回実行時に行われる
         generateNextTurn(topic, roles, numTurns, currentDiscussion, currentTurn, currentRoleIndex, language);
     }
     
@@ -163,6 +153,19 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalIterations = numTurns * totalRoles;
         const currentIteration = (currentTurn * totalRoles) + currentRoleIndex + 1;
         const percent = Math.round((currentIteration / totalIterations) * 100);
+        
+        // 初回表示時のみディスカッションセクションを表示
+        if (currentIteration === 1) {
+            // ディスカッションセクションを表示して初期化
+            discussionSection.classList.remove('d-none');
+            discussionContainer.innerHTML = '';
+            discussionTopicHeader.textContent = topic;
+            
+            // コンテナを初期化
+            actionItemsContainer.classList.add('d-none');
+            summaryContainer.classList.add('d-none');
+            guidanceContainer.classList.add('d-none');
+        }
         
         // ロード表示を更新
         loadingIndicator.querySelector('.progress-bar').style.width = `${percent}%`;
@@ -225,7 +228,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const newMessage = data.message;
             discussion.push(newMessage);
             
-            // UIに表示
+            // UIに表示（個別に発言表示）
             appendMessage(newMessage);
             
             // 全ての会話が終了したか確認
@@ -241,7 +244,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 continueDiscussionBtn.disabled = false;
                 provideGuidanceBtn.disabled = false;
             } else {
-                // 次のターンを生成
+                // 次のターンを生成（ディレイを追加して順番に表示されていることを強調）
                 setTimeout(() => {
                     generateNextTurn(
                         topic, 
@@ -252,7 +255,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         data.next_role_index,
                         language
                     );
-                }, 100); // わずかな遅延を追加して UI 更新を確実にする
+                }, 500); // ディレイを500msに増やして表示の間隔を明確にする
             }
         })
         .catch(error => {
@@ -783,27 +786,16 @@ document.addEventListener('DOMContentLoaded', function() {
         showLoading(true);
         hideError();
         
-        // Update header
-        discussionTopicHeader.textContent = `ディスカッション: ${topic} (文書参照)`;
-        
         // Get selected language
         const language = document.getElementById('language').value;
         
-        // Clear previous discussion and disable export buttons
-        discussionContainer.innerHTML = '';
+        // ボタンを無効化
         exportTextBtn.disabled = true;
         copyTextBtn.disabled = true;
-        
-        // 新機能のボタンも無効化
         generateActionItemsBtn.disabled = true;
         summarizeDiscussionBtn.disabled = true;
         continueDiscussionBtn.disabled = true;
         provideGuidanceBtn.disabled = true;
-        
-        // コンテナを初期化
-        actionItemsContainer.classList.add('d-none');
-        summaryContainer.classList.add('d-none');
-        guidanceContainer.classList.add('d-none');
         
         // 状態を初期化
         currentDiscussion = [];
@@ -823,6 +815,19 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalIterations = numTurns * totalRoles;
         const currentIteration = (currentTurn * totalRoles) + currentRoleIndex + 1;
         const percent = Math.round((currentIteration / totalIterations) * 100);
+        
+        // 初回表示時のみディスカッションセクションを表示
+        if (currentIteration === 1) {
+            // ディスカッションセクションを表示して初期化
+            discussionSection.classList.remove('d-none');
+            discussionContainer.innerHTML = '';
+            discussionTopicHeader.textContent = `${topic} (文書参照)`;
+            
+            // コンテナを初期化
+            actionItemsContainer.classList.add('d-none');
+            summaryContainer.classList.add('d-none');
+            guidanceContainer.classList.add('d-none');
+        }
         
         // ロード表示を更新
         loadingIndicator.querySelector('.progress-bar').style.width = `${percent}%`;
@@ -886,7 +891,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const newMessage = data.message;
             discussion.push(newMessage);
             
-            // UIに表示
+            // UIに表示（個別に発言表示）
             appendMessage(newMessage);
             
             // 全ての会話が終了したか確認
@@ -914,7 +919,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         language,
                         useDocument
                     );
-                }, 100); // わずかな遅延を追加して UI 更新を確実にする
+                }, 500); // ディレイを500msに増やして表示の間隔を明確にする
             }
         })
         .catch(error => {
@@ -1310,7 +1315,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // 新しいメッセージを追加
             currentDiscussionData.push(data.message);
             
-            // UIに表示
+            // UIに表示（個別に発言表示）
             appendMessage(data.message);
             
             // トピックヘッダーを更新
@@ -1341,10 +1346,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 requestData.current_role_index = data.next_role_index;
                 requestData.discussion_data = currentDiscussionData;
                 
-                // 次のターンをわずかな遅延で取得（UI更新を確実にするため）
+                // 次のターンを取得（ディレイを追加して順番に表示されていることを強調）
                 setTimeout(() => {
                     fetchNextContinuationTurn(requestData, currentDiscussionData);
-                }, 100);
+                }, 500);
             }
         })
         .catch(error => {
