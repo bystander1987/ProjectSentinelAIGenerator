@@ -180,6 +180,10 @@ def upload_document():
         session['document_uploaded'] = True
         session['document_name'] = filename
         
+        # 文書の概要情報も保存（最初の500文字程度）
+        document_summary = result['text_content'][:500] + "..." if len(result['text_content']) > 500 else result['text_content']
+        session['document_summary'] = document_summary
+        
         logger.info(f"Document successfully processed and stored in session: {filename}")
         return jsonify({
             'success': True,
@@ -306,6 +310,7 @@ def clear_document():
         session.pop('document_text', None)
         session.pop('document_uploaded', None)
         session.pop('document_name', None)
+        session.pop('document_summary', None)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error clearing document session: {str(e)}")
