@@ -154,12 +154,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const currentIteration = (currentTurn * totalRoles) + currentRoleIndex + 1;
         const percent = Math.round((currentIteration / totalIterations) * 100);
         
-        // 初回表示時のみディスカッションセクションを表示
+        // 初回表示時のみディスカッションセクションを初期化
         if (currentIteration === 1) {
-            // ディスカッションセクションを表示して初期化
-            discussionSection.classList.remove('d-none');
+            // ディスカッションセクションを初期化
             discussionContainer.innerHTML = '';
             discussionTopicHeader.textContent = topic;
+            discussionContainer.classList.remove('d-none');
             
             // コンテナを初期化
             actionItemsContainer.classList.add('d-none');
@@ -816,12 +816,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const currentIteration = (currentTurn * totalRoles) + currentRoleIndex + 1;
         const percent = Math.round((currentIteration / totalIterations) * 100);
         
-        // 初回表示時のみディスカッションセクションを表示
+        // 初回表示時のみディスカッションセクションを初期化
         if (currentIteration === 1) {
-            // ディスカッションセクションを表示して初期化
-            discussionSection.classList.remove('d-none');
+            // ディスカッションセクションを初期化
             discussionContainer.innerHTML = '';
             discussionTopicHeader.textContent = `${topic} (文書参照)`;
+            discussionContainer.classList.remove('d-none');
             
             // コンテナを初期化
             actionItemsContainer.classList.add('d-none');
