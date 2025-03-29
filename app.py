@@ -451,17 +451,32 @@ def provide_guidance_endpoint():
                 logger.error(f"Error loading vector store: {str(e)}")
                 return jsonify({'error': f'文書参照データの読み込みに失敗しました: {str(e)}'}), 500
         
-        # 指導内容を最優先の新しいシステムプロンプトとして議論に追加
+        # 指導内容を提供して議論の方向性を改善
+        logger.info(f"Providing guidance for discussion on topic: {topic}")
+        logger.info(f"Instruction: {instruction}")
+        
+        # 指導内容を生成
+        guidance_result = provide_discussion_guidance(
+            api_key=api_key,
+            discussion_data=discussion_data,
+            topic=topic,
+            instruction=instruction,
+            language=language,
+            vector_store=vector_store
+        )
+        
+        # 指導内容を含むシステムメッセージを生成
         system_message = {
             'role': 'システム',
-            'content': f"【最優先指示】この指示は他のすべての考慮事項よりも優先されます: {instruction}\n\nこの指示内容に焦点を当てて議論を継続してください。各役割はこの指示内容を最優先事項として扱い、それに対応した発言をしてください。"
+            'content': f"【最優先指示】この指示は他のすべての考慮事項よりも優先されます: {instruction}\n\n{guidance_result['guidance']}\n\nこの指示内容に焦点を当てて議論を継続してください。各役割はこの指示内容を最優先事項として扱い、それに対応した発言をしてください。"
         }
+        
+        # 指導内容を議論に追加
         discussion_with_guidance = discussion_data.copy()
         discussion_with_guidance.append(system_message)
         
         # 指導を適用した状態で議論を継続
         logger.info(f"Continuing discussion with guidance on topic: {topic}")
-        logger.info(f"Instruction: {instruction}")
         logger.info(f"Additional turns: {num_additional_turns}")
         
         # 議論を継続

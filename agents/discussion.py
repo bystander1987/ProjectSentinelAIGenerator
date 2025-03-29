@@ -304,7 +304,8 @@ def provide_discussion_guidance(
     discussion_data: List[Dict[str, str]],
     topic: str,
     instruction: str,
-    language: str = "ja"
+    language: str = "ja",
+    vector_store: Optional[FAISS] = None
 ) -> Dict[str, str]:
     """
     議論に対して指示や提案を提供する
@@ -315,6 +316,7 @@ def provide_discussion_guidance(
         topic (str): 議論のテーマ
         instruction (str): ユーザーからの指示
         language (str): 出力言語 (デフォルト: "ja")
+        vector_store (Optional[FAISS]): RAG用のベクトルストア
         
     Returns:
         Dict[str, str]: 指示結果
@@ -328,6 +330,21 @@ def provide_discussion_guidance(
         discussion_text = f"ディスカッションテーマ: {topic}\n\n"
         for turn in discussion_data:
             discussion_text += f"{turn['role']}: {turn['content']}\n\n"
+        
+        # 文書から関連コンテキストを取得（存在する場合）
+        document_context = ""
+        if vector_store:
+            try:
+                from agents.document_processor import search_documents, create_context_from_documents
+                
+                # 指示と議論のトピックに基づいて検索
+                search_query = f"{topic} {instruction}"
+                document_chunks = search_documents(vector_store, search_query, top_k=5)
+                if document_chunks:
+                    document_context = create_context_from_documents(document_chunks, max_tokens=2000)
+                    logger.info(f"Retrieved document context for guidance - {len(document_context)} chars")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve document context for guidance: {str(e)}")
         
         # 指導用プロンプト - 重要度を最優先に設定
         system_prompt = f"""
@@ -348,6 +365,16 @@ def provide_discussion_guidance(
         
         ディスカッション内容:
         {discussion_text}
+        """
+        
+        # 文書コンテキストがある場合は追加
+        if document_context:
+            prompt += f"""
+        
+        また、以下の参考文書の内容も考慮してください。この文書にある情報を活用して、より具体的なガイダンスを提供してください：
+        
+        参考文書:
+        {document_context}
         """
         
         messages = [
@@ -403,6 +430,42 @@ def continue_discussion(
         # 既存の議論をコピー
         continued_discussion = discussion_data.copy()
         total_roles = len(roles)
+        
+        # 文書ベクトルストアがあり、かつこれまでの議論に文書分析が含まれていない場合は、文書分析ステップを追加
+        needs_document_analysis = vector_store is not None
+        
+        # 既存の議論に文書分析が含まれているか確認
+        if needs_document_analysis:
+            has_document_analysis = False
+            for message in discussion_data:
+                if message["role"] == "システム" and "文書の分析" in message["content"]:
+                    has_document_analysis = True
+                    break
+            
+            # 文書分析がまだない場合は追加
+            if not has_document_analysis:
+                logger.info("Adding document analysis step before continuing the discussion")
+                
+                # システムメッセージを追加
+                continued_discussion.append({
+                    "role": "システム",
+                    "content": f"議論の継続のため、アップロードされた文書の分析を行います。各役割が文書内容を踏まえて議論を継続します。"
+                })
+                
+                # 各役割が文書を分析
+                for role in roles:
+                    analysis = analyze_document_for_role(api_key, role, topic, language, vector_store)
+                    if analysis:
+                        continued_discussion.append({
+                            "role": role,
+                            "content": analysis
+                        })
+                
+                # 分析後の議論継続を示すシステムメッセージ
+                continued_discussion.append({
+                    "role": "システム",
+                    "content": f"文書分析が完了しました。この内容を踏まえて、テーマ「{topic}」についての議論を継続します。"
+                })
         
         # 追加ターンを生成
         for turn in range(num_additional_turns):
@@ -497,6 +560,77 @@ def generate_next_turn(
             logger.error(f"Unknown error: {error_message}")
             raise Exception(f"メッセージの生成に失敗しました: {error_message}")
 
+def analyze_document_for_role(
+    api_key: str,
+    role: str,
+    topic: str,
+    language: str,
+    vector_store: FAISS
+) -> str:
+    """
+    文書を特定の役割の視点から分析する
+    
+    Args:
+        api_key (str): Google Gemini API key
+        role (str): 分析する役割
+        topic (str): 議論のテーマ
+        language (str): 出力言語
+        vector_store (FAISS): 文書のベクトルストア
+        
+    Returns:
+        str: 分析結果
+    """
+    try:
+        llm = get_gemini_model(api_key, language)
+        
+        # 文書全体の内容を取得
+        from agents.document_processor import search_documents, create_context_from_documents
+        # トピックと役割に関連する内容を検索 (より多めに取得)
+        document_chunks = search_documents(vector_store, f"{topic} {role}", top_k=10)
+        document_context = create_context_from_documents(document_chunks, max_tokens=2000)
+        
+        if not document_context:
+            return ""
+        
+        logger.info(f"Analyzing document for role: {role} - context length: {len(document_context)}")
+        
+        # 役割に特化した文書分析のプロンプト
+        system_prompt = f"""
+        あなたは「{role}」の視点から情報を分析する専門家です。
+        以下の文書を{role}の視点から分析し、この役割にとって重要なポイントを抽出してください。
+        
+        特に「{topic}」というテーマに関連して、この役割が着目すべき情報に焦点を当ててください。
+        """
+        
+        prompt = f"""
+        以下の文書を「{role}」の視点から分析してください。
+        
+        文書:
+        {document_context}
+        
+        この文書の中で、「{role}」という役割にとって重要な情報を抽出し、以下の形式でまとめてください:
+        
+        1. 重要なポイント: この文書の中で、{role}にとって最も重要なポイントをリストアップ
+        2. 関連する数値/データ: {role}が議論で引用できる具体的な数値やデータ
+        3. 懸念事項: {role}の立場から見たときに懸念される点
+        4. 推奨事項: {role}としてこの情報に基づいて推奨できること
+        
+        回答は簡潔にまとめ、「{topic}」に関する議論で活用できる形にしてください。
+        冒頭に「文書分析：」と記載してください。
+        """
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=prompt)
+        ]
+        
+        response = llm.invoke(messages)
+        return response.content
+        
+    except Exception as e:
+        logger.error(f"Error analyzing document for role {role}: {str(e)}")
+        return f"文書の分析中にエラーが発生しました: {str(e)}"
+
 def generate_discussion(
     api_key: str,
     topic: str,
@@ -528,6 +662,31 @@ def generate_discussion(
             logger.info("RAG enabled: Using uploaded document as reference")
         
         discussion = []
+        
+        # 文書があれば、まず各ロールが文書を分析するステップを追加
+        if vector_store:
+            logger.info("Adding document analysis step for each role")
+            # システムメッセージを追加
+            discussion.append({
+                "role": "システム",
+                "content": f"アップロードされた文書の分析を行います。各役割が文書内容を理解した上で議論を開始します。"
+            })
+            
+            # 各役割が文書を分析
+            for role in roles:
+                analysis = analyze_document_for_role(api_key, role, topic, language, vector_store)
+                if analysis:
+                    discussion.append({
+                        "role": role,
+                        "content": analysis
+                    })
+            
+            # 分析後の議論開始を示すシステムメッセージ
+            discussion.append({
+                "role": "システム",
+                "content": f"文書分析が完了しました。この内容を踏まえて、テーマ「{topic}」についての議論を開始します。"
+            })
+        
         total_roles = len(roles)
         total_iterations = total_roles * num_turns
         
