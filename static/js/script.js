@@ -37,9 +37,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const guidanceContainer = document.getElementById('guidanceContainer');
     const guidanceContent = document.getElementById('guidanceContent');
     
+    // 役割アップロード関連のDOM要素
+    const uploadRolesBtn = document.getElementById('uploadRolesBtn');
+    const rolesFileInput = document.getElementById('rolesFile');
+    const clearExistingRolesCheckbox = document.getElementById('clearExistingRoles');
+    const rolesPreviewContainer = document.getElementById('rolesPreviewContainer');
+    const rolesUploadStatus = document.getElementById('rolesUploadStatus');
+    const rolesUploadStatusMessage = document.getElementById('rolesUploadStatusMessage');
+    const rolesUploadError = document.getElementById('rolesUploadError');
+    const rolesUploadErrorMessage = document.getElementById('rolesUploadErrorMessage');
+    const importRolesBtn = document.getElementById('importRolesBtn');
+    
     // モーダル関連
     const continueDiscussionModal = new bootstrap.Modal(document.getElementById('continueDiscussionModal'));
     const provideGuidanceModal = new bootstrap.Modal(document.getElementById('provideGuidanceModal'));
+    const uploadRolesModal = new bootstrap.Modal(document.getElementById('uploadRolesModal'));
     const additionalTurnsInput = document.getElementById('additionalTurns');
     const useDocumentForContinuationCheckbox = document.getElementById('useDocumentForContinuation');
     const guidanceInstructionInput = document.getElementById('guidanceInstruction');
@@ -69,6 +81,10 @@ document.addEventListener('DOMContentLoaded', function() {
         provideGuidanceBtn.addEventListener('click', showProvideGuidanceModal);
         startContinueDiscussionBtn.addEventListener('click', handleContinueDiscussion);
         startProvideGuidanceBtn.addEventListener('click', handleProvideGuidance);
+        
+        // 役割アップロード関連のイベントリスナー
+        rolesFileInput.addEventListener('change', handleRolesFileSelect);
+        importRolesBtn.addEventListener('click', importRoles);
         
         // Example topics
         exampleTopics.forEach(example => {
@@ -437,7 +453,7 @@ document.addEventListener('DOMContentLoaded', function() {
         enableExportButtons();
     }
     
-    function addRoleInput() {
+    function addRoleInput(roleText = '') {
         const roleInputs = document.querySelectorAll('.role-input');
         
         if (roleInputs.length >= 6) {
@@ -446,9 +462,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         const div = document.createElement('div');
-        div.className = 'input-group mb-2';
+        div.className = 'input-group mb-2 role-input-group';
         div.innerHTML = `
-            <input type="text" class="form-control role-input" placeholder="役割の説明" required>
+            <input type="text" class="form-control role-input" placeholder="役割の説明" value="${escapeHtml(roleText)}" required>
             <button class="btn btn-outline-danger remove-role-btn" type="button">
                 <i class="bi bi-trash"></i>
             </button>
@@ -489,7 +505,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add roles
         roles.forEach(role => {
             const div = document.createElement('div');
-            div.className = 'input-group mb-2';
+            div.className = 'input-group mb-2 role-input-group';
             div.innerHTML = `
                 <input type="text" class="form-control role-input" placeholder="役割の説明" value="${role}" required>
                 <button class="btn btn-outline-danger remove-role-btn" type="button">
@@ -635,6 +651,203 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('クリップボードへのコピーに失敗しました:', err);
                 showError('クリップボードへのコピーに失敗しました');
             });
+    }
+    
+    // 役割ファイルのアップロード処理関数
+    function handleRolesFileSelect(e) {
+        const file = e.target.files[0];
+        
+        if (!file) {
+            return;
+        }
+        
+        // プレビューをリセット
+        rolesPreviewContainer.innerHTML = '<div class="text-center"><i class="bi bi-arrow-repeat spin"></i> ファイルを読み込み中...</div>';
+        
+        // インポートボタンを無効化（プレビュー確認まで）
+        importRolesBtn.disabled = true;
+        
+        // ステータスとエラー表示をリセット
+        rolesUploadStatus.classList.add('d-none');
+        rolesUploadError.classList.add('d-none');
+        
+        // ファイルの種類に基づいて処理を分岐
+        const fileExt = file.name.split('.').pop().toLowerCase();
+        
+        const reader = new FileReader();
+        
+        reader.onload = function(event) {
+            try {
+                let roles = [];
+                
+                // ファイル形式に応じた処理
+                if (fileExt === 'json') {
+                    // JSONファイルの処理
+                    roles = parseRolesJson(event.target.result);
+                } else if (fileExt === 'csv') {
+                    // CSVファイルの処理
+                    roles = parseRolesCsv(event.target.result);
+                } else if (fileExt === 'txt') {
+                    // テキストファイルの処理
+                    roles = parseRolesTxt(event.target.result);
+                } else {
+                    throw new Error(`サポートされていないファイル形式です: ${fileExt}`);
+                }
+                
+                // 少なくとも1つ以上の役割があることを確認
+                if (roles.length === 0) {
+                    throw new Error('有効な役割が見つかりませんでした。ファイル形式を確認してください。');
+                }
+                
+                // 役割のプレビューを表示
+                displayRolesPreview(roles);
+                
+                // インポートボタンを有効化
+                importRolesBtn.disabled = false;
+            } catch (error) {
+                // エラー処理
+                rolesPreviewContainer.innerHTML = '<p class="text-muted text-center my-2">プレビューを表示できません</p>';
+                rolesUploadErrorMessage.textContent = error.message;
+                rolesUploadError.classList.remove('d-none');
+                console.error('Error parsing roles file:', error);
+            }
+        };
+        
+        reader.onerror = function() {
+            rolesPreviewContainer.innerHTML = '<p class="text-muted text-center my-2">ファイルの読み込みに失敗しました</p>';
+            rolesUploadErrorMessage.textContent = 'ファイルの読み込み中にエラーが発生しました。';
+            rolesUploadError.classList.remove('d-none');
+        };
+        
+        // ファイルをテキストとして読み込む
+        reader.readAsText(file);
+    }
+    
+    // JSON形式の役割ファイルをパースする
+    function parseRolesJson(content) {
+        const data = JSON.parse(content);
+        
+        // 配列であることを確認
+        if (Array.isArray(data)) {
+            return data.map(role => String(role)).filter(role => role.trim() !== '');
+        } else if (typeof data === 'object') {
+            // オブジェクトの場合は値を抽出
+            return Object.values(data).map(role => String(role)).filter(role => role.trim() !== '');
+        } else {
+            throw new Error('無効なJSON形式です。役割の配列が必要です。');
+        }
+    }
+    
+    // CSV形式の役割ファイルをパースする
+    function parseRolesCsv(content) {
+        // 単純なCSV解析（カンマ区切り）
+        return content.split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(line => line !== '')
+            .map(line => {
+                // カンマで区切られた最初の列を役割として使用
+                const columns = line.split(',');
+                return columns[0].trim();
+            })
+            .filter(role => role !== '');
+    }
+    
+    // テキスト形式の役割ファイルをパースする
+    function parseRolesTxt(content) {
+        // 行ごとに分割して空行を除去
+        return content.split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(line => line !== '');
+    }
+    
+    // 役割のプレビューを表示
+    function displayRolesPreview(roles) {
+        // プレビューコンテナをクリア
+        rolesPreviewContainer.innerHTML = '';
+        
+        // 役割のリストを表示
+        const list = document.createElement('ul');
+        list.className = 'list-group list-group-flush';
+        
+        roles.forEach((role, index) => {
+            const item = document.createElement('li');
+            item.className = 'list-group-item bg-transparent';
+            item.innerHTML = `<small>${index + 1}.</small> ${escapeHtml(role)}`;
+            list.appendChild(item);
+        });
+        
+        rolesPreviewContainer.appendChild(list);
+        
+        // 役割の数を表示
+        const countInfo = document.createElement('div');
+        countInfo.className = 'text-end text-muted mt-2 small';
+        countInfo.textContent = `合計 ${roles.length} 個の役割`;
+        rolesPreviewContainer.appendChild(countInfo);
+    }
+    
+    // 役割をフォームにインポート
+    function importRoles() {
+        try {
+            // プレビューから役割を取得
+            const roleListItems = rolesPreviewContainer.querySelectorAll('li');
+            const roles = Array.from(roleListItems).map(li => {
+                // <small>タグとその内容を除去して役割名だけを取得
+                return li.innerHTML.replace(/<small>.*?<\/small>\s*/, '');
+            });
+            
+            // 役割が見つからない場合はエラー
+            if (roles.length === 0) {
+                throw new Error('インポートする役割が見つかりません。');
+            }
+            
+            // 既存の役割をクリアするかどうか
+            if (clearExistingRolesCheckbox.checked) {
+                // 最初の2つの役割入力フィールドを残し、それ以外を削除
+                const roleInputs = document.querySelectorAll('.role-input-group');
+                for (let i = 2; i < roleInputs.length; i++) {
+                    roleInputs[i].remove();
+                }
+                
+                // 残った2つの入力フィールドをクリア
+                document.querySelectorAll('.role-input').forEach(input => {
+                    input.value = '';
+                });
+            }
+            
+            // 現在のフォーム内の役割入力フィールドを取得
+            let roleInputs = document.querySelectorAll('.role-input');
+            let currentIndex = 0;
+            
+            // 役割を入力フィールドに設定
+            for (let i = 0; i < roles.length; i++) {
+                if (currentIndex < roleInputs.length) {
+                    // 既存の入力フィールドを使用
+                    roleInputs[currentIndex].value = roles[i];
+                    currentIndex++;
+                } else {
+                    // 新しい入力フィールドを追加
+                    addRoleInput(roles[i]);
+                }
+            }
+            
+            // 成功メッセージを表示
+            rolesUploadStatusMessage.textContent = `${roles.length}個の役割が正常にインポートされました。`;
+            rolesUploadStatus.classList.remove('d-none');
+            
+            // モーダルを閉じる（少し遅延させて成功メッセージを見せる）
+            setTimeout(() => {
+                uploadRolesModal.hide();
+                
+                // 入力フィールドの削除ボタンの状態を更新
+                updateRemoveButtons();
+            }, 1500);
+            
+        } catch (error) {
+            // エラー処理
+            rolesUploadErrorMessage.textContent = error.message;
+            rolesUploadError.classList.remove('d-none');
+            console.error('Error importing roles:', error);
+        }
     }
     
     function appendMessage(message) {
