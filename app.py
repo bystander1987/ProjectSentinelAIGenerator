@@ -181,6 +181,8 @@ def upload_document():
     """ファイルをアップロードして処理する"""
     try:
         logger.info("Document upload request received")
+        # グローバルインポートを使用
+        import os
         
         # ファイルが存在するか確認
         if 'file' not in request.files:
@@ -314,6 +316,8 @@ def create_discussion_with_document():
     """ドキュメントの参照情報を使用して議論を生成する"""
     try:
         logger.info("Received discussion generation request with document")
+        # グローバルインポートを使用
+        import os
         
         # セッションに保存されたドキュメントをチェック
         if not session.get('document_uploaded', False):
@@ -485,6 +489,8 @@ def create_action_items():
     """議論の内容からアクションアイテムを生成する"""
     try:
         logger.info("Received action items generation request")
+        # グローバルインポートを使用
+        import os
         
         # リクエストデータの取得
         data = request.json
@@ -529,6 +535,8 @@ def summarize_discussion_endpoint():
     """議論の内容を要約する"""
     try:
         logger.info("Received discussion summarization request")
+        # グローバルインポートを使用
+        import os
         
         # リクエストデータの取得
         data = request.json
@@ -567,6 +575,8 @@ def provide_guidance_endpoint():
     """議論に対して指示や提案を提供し、その指示に基づいて議論を継続する"""
     try:
         logger.info("Received guidance request for discussion")
+        # グローバルインポートを使用
+        import os
         
         # リクエストデータの取得
         data = request.json
@@ -907,6 +917,8 @@ def continue_discussion_endpoint():
     """既存の議論を継続する"""
     try:
         logger.info("Received request to continue discussion")
+        # グローバルインポートを使用
+        import os
         
         # リクエストデータの取得
         data = request.json
@@ -1069,13 +1081,14 @@ def get_document_text():
 def get_document_analysis():
     """セッションに保存されている文書分析結果を取得する"""
     try:
+        # グローバルインポートを使用
+        import os
+        import json
+        import tempfile
+        
         # 新しい方式: 一時ファイルから分析結果を読み込む
         analysis_id = session.get('document_analysis_id')
         if analysis_id:
-            import os
-            import json
-            import tempfile
-            
             # 一時ファイルのパスを構築
             temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
             analysis_file_path = os.path.join(temp_dir, f"{analysis_id}.json")
