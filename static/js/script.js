@@ -700,8 +700,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 拡張子チェック
         const fileExt = file.name.split('.').pop().toLowerCase();
-        if (!['pdf', 'txt', 'docx'].includes(fileExt)) {
-            showDocumentError('サポートされていないファイル形式です。PDF, TXT, DOCXのいずれかを選択してください。');
+        if (!['pdf', 'txt', 'docx', 'xlsx'].includes(fileExt)) {
+            showDocumentError('サポートされていないファイル形式です。PDF, TXT, DOCX, XLSXのいずれかを選択してください。');
             return;
         }
         
@@ -878,6 +878,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Get selected language
         const language = document.getElementById('language').value;
         
+        // デバッグ情報をログに記録
+        console.log(`Starting discussion with document: topic=${topic}, roles=${roles.length}, numTurns=${numTurns}, language=${language}`);
+        
         // ボタンを無効化
         exportTextBtn.disabled = true;
         copyTextBtn.disabled = true;
@@ -886,16 +889,37 @@ document.addEventListener('DOMContentLoaded', function() {
         continueDiscussionBtn.disabled = true;
         provideGuidanceBtn.disabled = true;
         
-        // 状態を初期化
-        currentDiscussion = [];
-        let currentTurn = 0;
-        let currentRoleIndex = 0;
-        
-        // ドキュメント参照を使用するフラグをセット
-        const useDocument = true;
-        
-        // ターンごとに生成する処理
-        generateNextTurnWithDocument(topic, roles, numTurns, currentDiscussion, currentTurn, currentRoleIndex, language, useDocument);
+        // 最初に文書が本当にアップロードされているか確認
+        fetch('/get-document-text', {
+            method: 'GET'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success || !data.document_text) {
+                throw new Error('ドキュメントが正しくアップロードされていないか、内容が空です。再アップロードしてください。');
+            }
+            
+            console.log(`Document found, length: ${data.document_text.length} characters`);
+            
+            // 文書が確認できたので処理を続行
+            // 状態を初期化
+            currentDiscussion = [];
+            let currentTurn = 0;
+            let currentRoleIndex = 0;
+            
+            // ドキュメント参照を使用するフラグをセット
+            const useDocument = true;
+            
+            console.log(`Starting discussion generation with document flag=${useDocument}`);
+            
+            // ターンごとに生成する処理
+            generateNextTurnWithDocument(topic, roles, numTurns, currentDiscussion, currentTurn, currentRoleIndex, language, useDocument);
+        })
+        .catch(error => {
+            showLoading(false);
+            showError(error.message || 'ドキュメントの取得中にエラーが発生しました。');
+            console.error('Error checking document:', error);
+        });
     }
     
     function generateNextTurnWithDocument(topic, roles, numTurns, discussion, currentTurn, currentRoleIndex, language, useDocument) {

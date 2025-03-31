@@ -658,6 +658,9 @@ def generate_next_turn_endpoint():
         current_turn = int(data.get('currentTurn', 0))
         current_role_index = int(data.get('currentRoleIndex', 0))
         num_turns = int(data.get('numTurns', 3))
+        use_document = data.get('use_document', False)  # 文書を使用するかどうかのフラグ
+        
+        logger.info(f"Request parameters: topic={topic}, roles_count={len(roles)}, use_document={use_document}")
         
         # 入力検証
         if not topic:
@@ -680,24 +683,54 @@ def generate_next_turn_endpoint():
         # ベクトルストア（RAG）を取得
         vector_store = None
         document_text = ""
-        if 'document_uploaded' in session and session['document_uploaded']:
-            # ドキュメントテキストからベクトルストアを再作成
-            from agents.document_processor import create_vector_store, split_text
-            document_text = session.get('document_text', '')
-            if document_text:
-                logger.info("Recreating vector store from session document")
-                chunks = split_text(document_text)
-                vector_store = create_vector_store(chunks, api_key)
+        
+        # 文書を使用するかどうかをチェック
+        if use_document:
+            logger.info("Document reference requested for this turn")
+            if 'document_uploaded' in session and session['document_uploaded']:
+                # ドキュメントテキストからベクトルストアを再作成
+                from agents.document_processor import create_vector_store, split_text
+                document_text = session.get('document_text', '')
+                
+                if document_text:
+                    logger.info(f"Document found in session, length: {len(document_text)} characters")
+                    sample_text = document_text[:200] + "..." if len(document_text) > 200 else document_text
+                    logger.info(f"Document sample: {sample_text}")
+                    
+                    # テキストをチャンクに分割
+                    logger.info("Splitting document text into chunks for next turn")
+                    chunks = split_text(document_text)
+                    
+                    if chunks and len(chunks) > 0:
+                        logger.info(f"Successfully split document into {len(chunks)} chunks")
+                        
+                        # ベクトルストアを作成
+                        logger.info("Creating vector store for next turn")
+                        vector_store = create_vector_store(chunks, api_key)
+                        
+                        if vector_store:
+                            logger.info("Vector store successfully created for next turn")
+                        else:
+                            logger.error("Failed to create vector store for next turn")
+                    else:
+                        logger.error("Failed to split document into chunks for next turn")
+                else:
+                    logger.warning("Document text is empty in session")
+            else:
+                logger.warning("Document reference requested but no document in session")
         
         # ドキュメントテキストとトピックを組み合わせて新しいトピックを作成
         enhanced_topic = topic
-        if document_text:
-            document_preview = document_text[:1000] if len(document_text) > 1000 else document_text
-            enhanced_topic = f"{topic}\n\n文書内容:\n{document_preview}"
+        if use_document and document_text:
+            document_preview = document_text[:800] if len(document_text) > 800 else document_text
+            enhanced_topic = f"{topic} (対象文書あり)\n\n文書内容:\n{document_preview}"
             logger.info(f"Created enhanced topic with document content for next turn")
+        else:
+            logger.info("Using original topic without document content")
                 
         # 次のターンを生成
         from agents.discussion import generate_next_turn
+        logger.info(f"Calling generate_next_turn with vector_store: {vector_store is not None}")
         result = generate_next_turn(
             api_key=api_key,
             topic=enhanced_topic,
