@@ -7,24 +7,27 @@ from langchain_community.vectorstores import FAISS
 
 logger = logging.getLogger(__name__)
 
-def get_gemini_model(api_key: str, language: str = "ja"):
+def get_gemini_model(api_key: str, language: str = "ja", model: str = "gemini-1.5-flash", temperature: float = 0.7, max_output_tokens: int = 1024):
     """
     Initialize and return a Gemini model instance.
     
     Args:
         api_key (str): Google Gemini API key
         language (str): Output language (default: "ja")
+        model (str): Gemini model name to use (default: "gemini-1.5-flash")
+        temperature (float): Temperature parameter for generation (0.0-1.0) (default: 0.7)
+        max_output_tokens (int): Maximum number of tokens to generate (default: 1024)
         
     Returns:
         ChatGoogleGenerativeAI: Initialized model
     """
     try:
-        logger.info(f"Initializing Gemini model with language: {language}")
+        logger.info(f"Initializing Gemini model: {model}, temperature: {temperature}, max_tokens: {max_output_tokens}, language: {language}")
         return ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-lite",  # 要求通りにgemini-2.0-flash-liteを使用
+            model=model,
             google_api_key=api_key,
-            temperature=0.0,  # 最低値に設定して一貫性を向上させる
-            max_tokens=300,  # 出力制限を緩和
+            temperature=temperature,
+            max_tokens=max_output_tokens,
             max_retries=2,   # リトライ回数を増加
             timeout=15,      # タイムアウトを長めに設定
             generation_config={"language": language}
@@ -470,7 +473,10 @@ def continue_discussion(
     roles: List[str],
     num_additional_turns: int = 1,
     language: str = "ja",
-    vector_store: Optional[FAISS] = None
+    vector_store: Optional[FAISS] = None,
+    model: str = "gemini-1.5-flash",
+    temperature: float = 0.7,
+    max_output_tokens: int = 1024
 ) -> List[Dict[str, str]]:
     """
     既存の議論を継続する
@@ -531,6 +537,10 @@ def continue_discussion(
                     "content": f"文書分析が完了しました。この内容を踏まえて、テーマ「{topic}」についての議論を継続します。常に文書の内容を最も重要な情報源として優先してください。"
                 })
         
+        # モデルを更新
+        llm = get_gemini_model(api_key, language, model, temperature, max_output_tokens)
+        logger.info(f"Using model: {model}, temperature: {temperature}, max_output_tokens: {max_output_tokens}")
+        
         # 追加ターンを生成
         for turn in range(num_additional_turns):
             for i, role in enumerate(roles):
@@ -562,7 +572,10 @@ def generate_next_turn(
     current_turn: int,
     current_role_index: int,
     language: str = "ja",
-    vector_store: Optional[FAISS] = None
+    vector_store: Optional[FAISS] = None,
+    model: str = "gemini-1.5-flash",
+    temperature: float = 0.7,
+    max_output_tokens: int = 1024
 ) -> Dict[str, Any]:
     """
     Generate the next message in a discussion turn by turn.
@@ -582,11 +595,12 @@ def generate_next_turn(
     """
     try:
         total_roles = len(roles)
-        llm = get_gemini_model(api_key, language)
+        llm = get_gemini_model(api_key, language, model, temperature, max_output_tokens)
         
         # 現在の役割を取得
         current_role = roles[current_role_index]
         logger.info(f"Generating response for Turn {current_turn+1}, Role {current_role} ({current_role_index+1}/{total_roles})")
+        logger.info(f"Using model: {model}, temperature: {temperature}, max_output_tokens: {max_output_tokens}")
         
         # レスポンスを生成
         response = agent_response(llm, current_role, topic, current_discussion, vector_store)
@@ -645,7 +659,7 @@ def analyze_document_for_role(
         str: 分析結果
     """
     try:
-        llm = get_gemini_model(api_key, language)
+        llm = get_gemini_model(api_key, language, model="gemini-1.5-flash", temperature=0.7, max_output_tokens=1024)
         
         # 文書全体の内容を取得
         from agents.document_processor import search_documents, create_context_from_documents
@@ -744,7 +758,7 @@ def generate_consultant_analysis(
         str: コンサルタントによる論点分析
     """
     try:
-        llm = get_gemini_model(api_key, language)
+        llm = get_gemini_model(api_key, language, model="gemini-1.5-flash", temperature=0.7, max_output_tokens=1024)
         
         # 文書からの情報抽出
         document_context = ""
@@ -870,7 +884,10 @@ def generate_discussion(
     roles: List[str],
     num_turns: int = 3,
     language: str = "ja",
-    vector_store: Optional[FAISS] = None
+    vector_store: Optional[FAISS] = None,
+    model: str = "gemini-1.5-flash",
+    temperature: float = 0.7,
+    max_output_tokens: int = 1024
 ) -> List[Dict[str, str]]:
     """
     Generate a multi-turn discussion between agents with different roles.
@@ -965,7 +982,10 @@ def generate_discussion(
                 current_turn=current_turn,
                 current_role_index=current_role_index,
                 language=language,
-                vector_store=vector_store
+                vector_store=vector_store,
+                model=model,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens
             )
             
             # 結果を追加

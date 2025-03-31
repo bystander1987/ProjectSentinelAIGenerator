@@ -94,6 +94,12 @@
                                 </select>
                             </div>
                             
+                            <div class="d-grid mb-3">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#settingsModal">
+                                    <i class="bi bi-gear"></i> 詳細設定
+                                </button>
+                            </div>
+                            
                             <div class="d-grid gap-2">
                                 <button type="submit" class="btn btn-primary" id="generateBtn">
                                     <i class="bi bi-play-fill"></i> ディスカッションを生成
@@ -396,6 +402,72 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
                     <button type="button" class="btn btn-primary" id="importRolesBtn" disabled>役割をインポート</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 詳細設定モーダル -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="settingsModalLabel">詳細設定</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="settingsForm">
+                        <div class="mb-4">
+                            <h6 class="mb-3">生成AIモデル設定</h6>
+                            <div class="mb-3">
+                                <label for="modelSelect" class="form-label">使用モデル</label>
+                                <select class="form-select" id="modelSelect">
+                                    <option value="gemini-1.5-flash" selected>Gemini 1.5 Flash (高速、バランス型)</option>
+                                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (高品質、詳細な回答)</option>
+                                    <option value="gemini-1.0-pro">Gemini 1.0 Pro (従来モデル)</option>
+                                    <option value="gemini-1.0-flash">Gemini 1.0 Flash (従来の高速モデル)</option>
+                                </select>
+                                <div class="form-text">生成に使用するGemini AIモデルを選択します。コンテキストの長さや応答の質に影響します。</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="temperatureSlider" class="form-label">テンパレーチャー: <span id="temperatureValue">0.7</span></label>
+                                <input type="range" class="form-range" id="temperatureSlider" min="0" max="1" step="0.1" value="0.7">
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">0 (低: 一貫性)</small>
+                                    <small class="text-muted">1 (高: 多様性)</small>
+                                </div>
+                                <div class="form-text">低い値では一貫性のある応答、高い値では創造的で多様な応答が生成されます。</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h6 class="mb-3">出力制限設定</h6>
+                            <div class="mb-3">
+                                <label for="maxOutputTokens" class="form-label">最大出力トークン数</label>
+                                <select class="form-select" id="maxOutputTokens">
+                                    <option value="256">256トークン (短め)</option>
+                                    <option value="512">512トークン</option>
+                                    <option value="1024" selected>1024トークン (標準)</option>
+                                    <option value="2048">2048トークン (詳細)</option>
+                                    <option value="4096">4096トークン (長文)</option>
+                                </select>
+                                <div class="form-text">1回の応答で生成される最大トークン（単語や記号の単位）数。長い値ほど詳細な応答になります。</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="saveSettingsSwitch" checked>
+                                <label class="form-check-label" for="saveSettingsSwitch">この設定を保存する</label>
+                            </div>
+                            <div class="form-text">設定をブラウザに保存し、次回訪問時に自動的に適用します。</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                    <button type="button" class="btn btn-primary" id="saveSettingsBtn">設定を適用</button>
                 </div>
             </div>
         </div>

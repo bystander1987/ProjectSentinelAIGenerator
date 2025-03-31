@@ -48,6 +48,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const rolesUploadErrorMessage = document.getElementById('rolesUploadErrorMessage');
     const importRolesBtn = document.getElementById('importRolesBtn');
     
+    // 詳細設定モーダル関連のDOM要素
+    const modelSelect = document.getElementById('modelSelect');
+    const temperatureSlider = document.getElementById('temperatureSlider');
+    const temperatureValue = document.getElementById('temperatureValue');
+    const maxOutputTokens = document.getElementById('maxOutputTokens');
+    const saveSettingsSwitch = document.getElementById('saveSettingsSwitch');
+    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+    
     // モーダル関連
     const continueDiscussionModal = new bootstrap.Modal(document.getElementById('continueDiscussionModal'));
     const provideGuidanceModal = new bootstrap.Modal(document.getElementById('provideGuidanceModal'));
@@ -195,6 +203,9 @@ document.addEventListener('DOMContentLoaded', function() {
         loadingIndicator.querySelector('.progress-text').textContent = 
             `${roles[currentRoleIndex]}の発言を生成中... (${currentIteration}/${totalIterations})`;
         
+        // 現在の設定を取得
+        const currentSettings = getCurrentSettingsFromUI();
+        
         // リクエストデータを準備
         const requestData = {
             topic: topic,
@@ -203,7 +214,11 @@ document.addEventListener('DOMContentLoaded', function() {
             discussion: discussion,
             currentTurn: currentTurn,
             currentRoleIndex: currentRoleIndex,
-            language: language
+            language: language,
+            // モデル設定を追加
+            model: currentSettings.model,
+            temperature: currentSettings.temperature,
+            maxOutputTokens: currentSettings.maxOutputTokens
         };
         
         // サーバーに次のターンを要求
@@ -1399,6 +1414,9 @@ document.addEventListener('DOMContentLoaded', function() {
         loadingIndicator.querySelector('.progress-text').textContent = 
             `${roles[currentRoleIndex]}の発言を生成中... (文書参照) (${currentIteration}/${totalIterations})`;
         
+        // 現在の設定を取得
+        const currentSettings = getCurrentSettingsFromUI();
+        
         // リクエストデータを準備
         const requestData = {
             topic: topic,
@@ -1408,7 +1426,11 @@ document.addEventListener('DOMContentLoaded', function() {
             currentTurn: currentTurn,
             currentRoleIndex: currentRoleIndex,
             language: language,
-            use_document: useDocument
+            use_document: useDocument,
+            // モデル設定を追加
+            model: currentSettings.model,
+            temperature: currentSettings.temperature,
+            maxOutputTokens: currentSettings.maxOutputTokens
         };
         
         // サーバーに次のターンを要求
@@ -1831,6 +1853,9 @@ document.addEventListener('DOMContentLoaded', function() {
         showLoading(true);
         hideError();
         
+        // 現在の設定を取得
+        const currentSettings = getCurrentSettingsFromUI();
+        
         // 初期リクエストデータ作成（ターンごとに更新される）
         let requestData = {
             discussion_data: discussionData,
@@ -1840,7 +1865,11 @@ document.addEventListener('DOMContentLoaded', function() {
             language: language,
             use_document: useDocument,
             current_turn: 0,  // 初期ターン
-            current_role_index: 0  // 初期役割インデックス
+            current_role_index: 0,  // 初期役割インデックス
+            // モデル設定を追加
+            model: currentSettings.model,
+            temperature: currentSettings.temperature,
+            maxOutputTokens: currentSettings.maxOutputTokens
         };
         
         // 継続議論のターンごとの処理を実行
@@ -2021,6 +2050,9 @@ document.addEventListener('DOMContentLoaded', function() {
         showLoading(true);
         hideError();
         
+        // 現在の設定を取得
+        const currentSettings = getCurrentSettingsFromUI();
+        
         // リクエストデータ作成
         const requestData = {
             discussion_data: discussionData,
@@ -2028,7 +2060,11 @@ document.addEventListener('DOMContentLoaded', function() {
             instruction: instruction,
             num_additional_turns: numAdditionalTurns,
             use_document: useDocument,
-            language: language
+            language: language,
+            // モデル設定を追加
+            model: currentSettings.model,
+            temperature: currentSettings.temperature,
+            maxOutputTokens: currentSettings.maxOutputTokens
         };
         
         // タイムアウト処理
@@ -2150,6 +2186,113 @@ document.addEventListener('DOMContentLoaded', function() {
         
         return html;
     }
+    
+    // 詳細設定関連の機能
+    
+    // 設定の初期値
+    const defaultSettings = {
+        model: 'gemini-1.5-flash',
+        temperature: 0.7,
+        maxOutputTokens: 1024,
+        saveSettings: true
+    };
+    
+    // ローカルストレージから設定を読み込む
+    function loadSettings() {
+        try {
+            const savedSettings = localStorage.getItem('discussionGeneratorSettings');
+            if (savedSettings) {
+                return JSON.parse(savedSettings);
+            }
+        } catch (e) {
+            console.error('設定の読み込み中にエラーが発生しました:', e);
+        }
+        return defaultSettings;
+    }
+    
+    // 設定を保存する
+    function saveSettings(settings) {
+        try {
+            if (settings.saveSettings) {
+                localStorage.setItem('discussionGeneratorSettings', JSON.stringify(settings));
+            } else {
+                localStorage.removeItem('discussionGeneratorSettings');
+            }
+        } catch (e) {
+            console.error('設定の保存中にエラーが発生しました:', e);
+        }
+    }
+    
+    // UIに設定を適用する
+    function applySettingsToUI(settings) {
+        modelSelect.value = settings.model;
+        temperatureSlider.value = settings.temperature;
+        temperatureValue.textContent = settings.temperature;
+        maxOutputTokens.value = settings.maxOutputTokens;
+        saveSettingsSwitch.checked = settings.saveSettings;
+    }
+    
+    // 現在のUI設定を取得する
+    function getCurrentSettingsFromUI() {
+        return {
+            model: modelSelect.value,
+            temperature: parseFloat(temperatureSlider.value),
+            maxOutputTokens: parseInt(maxOutputTokens.value),
+            saveSettings: saveSettingsSwitch.checked
+        };
+    }
+    
+    // 設定初期化と設定変更イベントリスナー登録
+    function initSettings() {
+        // 設定の読み込みと適用
+        const settings = loadSettings();
+        applySettingsToUI(settings);
+        
+        // スライダー値変更時の表示更新
+        temperatureSlider.addEventListener('input', function() {
+            temperatureValue.textContent = this.value;
+        });
+        
+        // 設定保存ボタンのイベントリスナー
+        saveSettingsBtn.addEventListener('click', function() {
+            const currentSettings = getCurrentSettingsFromUI();
+            saveSettings(currentSettings);
+            
+            // モーダルを閉じる
+            const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
+            modal.hide();
+            
+            // 成功メッセージを表示
+            const toastContainer = document.createElement('div');
+            toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+            toastContainer.innerHTML = `
+                <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-success text-white">
+                        <strong class="me-auto"><i class="bi bi-check-circle"></i> 設定を保存しました</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="閉じる"></button>
+                    </div>
+                    <div class="toast-body">
+                        生成AIモデルと温度設定が更新されました。
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(toastContainer);
+            const toastElement = toastContainer.querySelector('.toast');
+            const toast = new bootstrap.Toast(toastElement);
+            toast.show();
+            
+            // 少し経ったら要素を削除
+            setTimeout(() => {
+                if (toastContainer.parentNode) {
+                    toastContainer.parentNode.removeChild(toastContainer);
+                }
+            }, 3000);
+        });
+    }
+    
+    // 設定の初期化を実行
+    initSettings();
     
     // HTML特殊文字をエスケープする関数
     function escapeHtml(text) {

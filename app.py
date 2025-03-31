@@ -405,6 +405,11 @@ def create_discussion_with_document():
         roles = data.get('roles', [])
         language = data.get('language', 'ja')
         
+        # モデル設定の取得
+        model = data.get('model', 'gemini-1.5-flash')
+        temperature = float(data.get('temperature', 0.7))
+        max_output_tokens = int(data.get('maxOutputTokens', 1024))
+        
         # 基本的な検証（通常の議論生成と同じ）
         if not base_topic:
             return jsonify({'error': '議題を入力してください'}), 400
@@ -533,7 +538,10 @@ def create_discussion_with_document():
             roles=roles,
             num_turns=num_turns,
             language=language,
-            vector_store=vector_store
+            vector_store=vector_store,
+            model=model,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens
         )
         
         logger.info(f"Successfully generated RAG-enhanced discussion with {len(discussion_data)} messages")
@@ -886,6 +894,11 @@ def provide_guidance_endpoint():
         logger.info(f"Continuing discussion with guidance on topic: {topic}")
         logger.info(f"Additional turns: {num_additional_turns}")
         
+        # モデル設定の取得
+        model = data.get('model', 'gemini-1.5-flash')
+        temperature = float(data.get('temperature', 0.7))
+        max_output_tokens = int(data.get('maxOutputTokens', 1024))
+        
         # 議論を継続
         continued_discussion = continue_discussion(
             api_key, 
@@ -894,7 +907,10 @@ def provide_guidance_endpoint():
             roles, 
             num_additional_turns, 
             language, 
-            vector_store
+            vector_store,
+            model=model,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens
         )
         
         logger.info("Successfully generated guided discussion continuation")
@@ -1015,7 +1031,13 @@ def generate_next_turn_endpoint():
         num_turns = int(data.get('numTurns', 3))
         use_document = data.get('use_document', False)  # 文書を使用するかどうかのフラグ
         
+        # モデル設定パラメータの取得
+        model = data.get('model', 'gemini-1.5-flash')
+        temperature = float(data.get('temperature', 0.7))
+        max_output_tokens = int(data.get('maxOutputTokens', 1024))
+        
         logger.info(f"Request parameters: topic={topic}, roles_count={len(roles)}, use_document={use_document}")
+        logger.info(f"Model settings: model={model}, temperature={temperature}, max_output_tokens={max_output_tokens}")
         
         # 入力検証
         if not topic:
@@ -1125,7 +1147,10 @@ def generate_next_turn_endpoint():
             current_turn=current_turn,
             current_role_index=current_role_index,
             language=language,
-            vector_store=vector_store
+            vector_store=vector_store,
+            model=model,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens
         )
         
         # 最終ターンかどうかを確認
@@ -1169,6 +1194,11 @@ def continue_discussion_endpoint():
         language = data.get('language', 'ja')
         current_turn = int(data.get('current_turn', 0))
         current_role_index = int(data.get('current_role_index', 0))
+        
+        # モデル設定パラメータの取得
+        model = data.get('model', 'gemini-1.5-flash')
+        temperature = float(data.get('temperature', 0.7))
+        max_output_tokens = int(data.get('maxOutputTokens', 1024))
         
         # 新規リクエストか継続リクエストかを判断
         is_new_request = current_turn == 0 and current_role_index == 0
@@ -1307,7 +1337,10 @@ def continue_discussion_endpoint():
                 current_turn=current_turn,
                 current_role_index=current_role_index,
                 language=language,
-                vector_store=vector_store
+                vector_store=vector_store,
+                model=model,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens
             )
             
             # 最後のターンかどうかをマーク
