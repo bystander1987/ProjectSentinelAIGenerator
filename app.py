@@ -1001,6 +1001,9 @@ def generate_next_turn_endpoint():
     try:
         logger.info("Received next turn generation request")
         
+        # 必須モジュールのインポート
+        import os
+        
         # リクエストデータの取得
         data = request.json
         topic = data.get('topic', '')
