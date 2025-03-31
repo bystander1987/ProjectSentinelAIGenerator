@@ -86,6 +86,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
+        // セッション間でデータが残らないように、ドキュメント分析結果をクリア
+        const analysisContainer = document.getElementById('documentAnalysisContainer');
+        if (analysisContainer) {
+            analysisContainer.innerHTML = '';
+        }
+        
         // Check for uploaded document in session
         checkDocumentSession();
     }
