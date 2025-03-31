@@ -63,37 +63,53 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 @app.route('/')
 def index():
     """Render the main page of the application."""
-    # ページロード時にセッションをクリア
-    try:
-        # 文書関連のセッションデータをクリア
-        session.pop('document_text', None)
-        session.pop('document_uploaded', None)
-        session.pop('document_name', None)
-        session.pop('document_summary', None)
-        session.pop('document_analysis', None)
-        session.pop('document_rag_data', None)
-        
-        # 新方式の一時ファイルからも分析データをクリア
-        if 'document_analysis_id' in session:
-            analysis_id = session.pop('document_analysis_id', None)
-            if analysis_id:
-                try:
-                    import os
-                    import tempfile
-                    
-                    # 一時ファイルのパスを構築
-                    temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
-                    analysis_file_path = os.path.join(temp_dir, f"{analysis_id}.json")
-                    
-                    # ファイルが存在する場合は削除
-                    if os.path.exists(analysis_file_path):
-                        os.remove(analysis_file_path)
-                        logger.info(f"Removed temporary analysis file: {analysis_file_path}")
-                except Exception as file_error:
-                    logger.error(f"Error removing temporary analysis file: {str(file_error)}")
-    except Exception as e:
-        logger.error(f"Error clearing session on page load: {str(e)}")
+    # ページリロード時にドキュメントセッションを検証
+    # パス検索パラメータに 'reset=true' がある場合は完全リセット
+    if request.args.get('reset') == 'true':
+        logger.info("Reset parameter detected, performing full session reset")
+        try:
+            # セッションを完全クリア
+            session.clear()
+            
+            # 必要な場合は特定の一時ファイルも削除
+            try:
+                import os
+                import tempfile
+                import glob
+                import shutil
+                
+                # ドキュメント分析用の一時ディレクトリクリア
+                temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
+                if os.path.exists(temp_dir):
+                    for file_path in glob.glob(os.path.join(temp_dir, "*.json")):
+                        try:
+                            if os.path.exists(file_path):
+                                os.remove(file_path)
+                                logger.info(f"Reset mode: Removed temporary file: {file_path}")
+                        except Exception as e:
+                            logger.warning(f"Error removing temporary file {file_path}: {str(e)}")
+            except Exception as cleanup_error:
+                logger.error(f"Error during reset cleanup: {str(cleanup_error)}")
+        except Exception as e:
+            logger.error(f"Error during session reset: {str(e)}")
     
+    # document_uploaded フラグが不正にセットされている可能性があるため検証
+    # テキストがなければ強制的にフラグをリセットする
+    if session.get('document_uploaded', False):
+        document_text = session.get('document_text', '')
+        if not document_text or not isinstance(document_text, str) or len(document_text) == 0:
+            # 不整合を検出: テキストがないのにフラグが立っている
+            logger.warning("Inconsistent document session state detected: flag is set but text is missing")
+            session['document_uploaded'] = False
+            # 関連するセッションキーもクリア
+            for key in ['document_text', 'document_name', 'document_analysis', 'document_rag_data']:
+                if key in session:
+                    session.pop(key, None)
+    
+    # セッション変更を確実に保存
+    session.modified = True
+    
+    # メインページをレンダリング
     return render_template('index.html')
 
 @app.route('/generate-discussion', methods=['POST'])
@@ -481,67 +497,112 @@ def create_discussion_with_document():
 def clear_document():
     """セッションからドキュメント情報をクリアする"""
     try:
-        logger.info("Clearing document from session")
-        # 全てのドキュメント関連データを一度に削除
+        logger.info("Clearing document data from session")
+        
+        # セッション状態を完全に整理
+        session.clear()
+        logger.info("Cleared entire session")
+        
+        # 全てのドキュメント関連データを再設定
         keys_to_remove = [
             'document_text', 
             'document_uploaded', 
             'document_name', 
             'document_summary', 
             'document_analysis', 
-            'document_rag_data'
+            'document_rag_data',
+            'document_vector_store',
+            'document_analysis_id'
         ]
         
+        # 重要なセッションキーを明示的に削除（念のため）
         for key in keys_to_remove:
             if key in session:
                 session.pop(key, None)
-                logger.info(f"Removed session key: {key}")
+                logger.info(f"Explicitly removed session key: {key}")
+        
+        # 全てのドキュメントフラグを確実にリセット
+        session['document_uploaded'] = False
+        
+        # 一時ファイルを削除
+        try:
+            import os
+            import tempfile
+            import glob
+            import shutil
             
-        # 新方式の一時ファイルからも分析データをクリア
-        if 'document_analysis_id' in session:
-            analysis_id = session.pop('document_analysis_id', None)
+            # まず分析IDに基づいた特定のファイルを削除
+            analysis_id = session.get('document_analysis_id')
             if analysis_id:
+                # 一時ファイルのパスを構築
+                temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
+                analysis_file_path = os.path.join(temp_dir, f"{analysis_id}.json")
+                
+                # ファイルが存在する場合は削除
+                if os.path.exists(analysis_file_path):
+                    os.remove(analysis_file_path)
+                    logger.info(f"Removed temporary analysis file: {analysis_file_path}")
+            
+            # 一時ディレクトリ内の全てのJSONファイルを削除
+            temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
+            if os.path.exists(temp_dir):
+                # まず3日以上経過したファイルを削除
+                import time
+                current_time = time.time()
+                three_days_in_seconds = 3 * 24 * 60 * 60
+                
+                for file_path in glob.glob(os.path.join(temp_dir, "*.json")):
+                    if os.path.exists(file_path):
+                        try:
+                            file_modified_time = os.path.getmtime(file_path)
+                            if current_time - file_modified_time > three_days_in_seconds:
+                                os.remove(file_path)
+                                logger.info(f"Removed old temporary file: {file_path}")
+                        except Exception as file_error:
+                            logger.error(f"Error removing temporary file {file_path}: {str(file_error)}")
+                
+                # 必要に応じてディレクトリを再作成
                 try:
-                    import os
-                    import tempfile
-                    import glob
+                    # 一時ディレクトリを完全にクリア（オプション）
+                    # shutil.rmtree(temp_dir)
+                    # os.makedirs(temp_dir, exist_ok=True)
+                    # logger.info(f"Recreated temporary directory: {temp_dir}")
+                    pass
+                except Exception as dir_error:
+                    logger.error(f"Error recreating temporary directory: {str(dir_error)}")
                     
-                    # 一時ファイルのパスを構築
-                    temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
-                    analysis_file_path = os.path.join(temp_dir, f"{analysis_id}.json")
-                    
-                    # ファイルが存在する場合は削除
-                    if os.path.exists(analysis_file_path):
-                        os.remove(analysis_file_path)
-                        logger.info(f"Removed temporary analysis file: {analysis_file_path}")
-                        
-                    # 念のため、関連する全ての一時ファイルを削除
+        except Exception as cleanup_error:
+            logger.error(f"Error cleaning up temporary files: {str(cleanup_error)}")
+            
+        # アップロードディレクトリもクリア
+        try:
+            import os
+            
+            # アップロードディレクトリをチェック
+            upload_dir = os.path.join('static', 'uploads')
+            if os.path.exists(upload_dir):
+                for item in os.listdir(upload_dir):
+                    item_path = os.path.join(upload_dir, item)
                     try:
-                        # 3日以上経過した一時ファイルを削除（古いファイルのクリーンアップ）
-                        import time
-                        current_time = time.time()
-                        three_days_in_seconds = 3 * 24 * 60 * 60
-                        
-                        if os.path.exists(temp_dir):
-                            for file_path in glob.glob(os.path.join(temp_dir, "*.json")):
-                                if os.path.exists(file_path):
-                                    file_modified_time = os.path.getmtime(file_path)
-                                    if current_time - file_modified_time > three_days_in_seconds:
-                                        os.remove(file_path)
-                                        logger.info(f"Removed old temporary file: {file_path}")
-                    except Exception as cleanup_error:
-                        logger.error(f"Error cleaning up old temporary files: {str(cleanup_error)}")
-                        
-                except Exception as file_error:
-                    logger.error(f"Error removing temporary analysis file: {str(file_error)}")
+                        if os.path.isfile(item_path):
+                            os.unlink(item_path)
+                            logger.info(f"Removed upload file: {item_path}")
+                    except Exception as upload_error:
+                        logger.error(f"Error removing upload file {item_path}: {str(upload_error)}")
+        except Exception as upload_cleanup_error:
+            logger.error(f"Error cleaning upload directory: {str(upload_cleanup_error)}")
         
         # セッションを確実に保存（変更をすぐに反映させるため）
         session.modified = True
         
+        logger.info("Document data successfully cleared from session")
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error clearing document session: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'success': False,
+            'error': f'ドキュメントデータのクリア中にエラーが発生しました: {str(e)}'
+        }), 500
 
 @app.route('/generate-action-items', methods=['POST'])
 def create_action_items():
@@ -1118,13 +1179,34 @@ def continue_discussion_endpoint():
 def get_document_text():
     """セッションに保存されているドキュメントのテキストを取得する"""
     try:
-        if 'document_uploaded' in session and session['document_uploaded']:
+        # セッションの状態を詳細にロギング
+        logger.debug(f"Session document state: document_uploaded={session.get('document_uploaded', False)}")
+        logger.debug(f"Session contains document_text: {'document_text' in session}")
+        
+        # ドキュメントがアップロードされている場合
+        if 'document_uploaded' in session and session['document_uploaded'] and 'document_text' in session:
             document_text = session.get('document_text', '')
-            return jsonify({
-                'success': True,
-                'document_text': document_text
-            })
+            
+            # テキストが実際に存在するかチェック
+            if document_text and isinstance(document_text, str) and len(document_text) > 0:
+                logger.debug(f"Document text found, length: {len(document_text)} characters")
+                return jsonify({
+                    'success': True,
+                    'document_text': document_text
+                })
+            else:
+                logger.warning("Document marked as uploaded but text is empty or invalid")
+                # セッションフラグを修正
+                session['document_uploaded'] = False
+                return jsonify({
+                    'success': False,
+                    'error': 'ドキュメントテキストが無効または空です'
+                })
         else:
+            logger.info("No document uploaded in this session")
+            # セッションフラグをクリア（念のため）
+            if 'document_uploaded' in session:
+                session['document_uploaded'] = False
             return jsonify({
                 'success': False,
                 'error': 'ドキュメントがアップロードされていません'

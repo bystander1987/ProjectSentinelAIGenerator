@@ -711,23 +711,49 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // FormDataの作成
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        // エラー表示をクリア
-        hideDocumentError();
-        
         // アップロードボタンの状態を変更
         const uploadBtn = document.getElementById('uploadDocumentBtn');
         const originalText = uploadBtn.innerHTML;
         uploadBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> アップロード中...';
         uploadBtn.disabled = true;
         
-        // ファイルアップロード
-        fetch('/upload-document', {
+        // エラー表示をクリア
+        hideDocumentError();
+        
+        // まずセッションをクリアしてから、ファイルをアップロード
+        console.log("Clearing document before upload");
+        
+        // セッションデータをクリア
+        sessionStorage.removeItem('uploadedDocument');
+        localStorage.removeItem('documentAnalysisData');
+        
+        // ドキュメント分析結果をクリア
+        const analysisContainer = document.getElementById('documentAnalysisContainer');
+        if (analysisContainer) {
+            analysisContainer.innerHTML = '';
+        }
+        
+        // サーバー側のセッションもクリア
+        fetch('/clear-document', {
             method: 'POST',
-            body: formData
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(() => {
+            console.log("Session cleared, now uploading file");
+            
+            // クリア後にアップロード処理
+            // FormDataの作成
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // ファイルアップロード
+            return fetch('/upload-document', {
+                method: 'POST',
+                body: formData
+            });
         })
         .then(response => {
             if (!response.ok) {
@@ -754,10 +780,13 @@ document.addEventListener('DOMContentLoaded', function() {
             uploadBtn.disabled = false;
             
             if (data.success) {
+                console.log("Document upload successful:", data);
+                
                 // セッションに保存
                 sessionStorage.setItem('uploadedDocument', JSON.stringify({
                     name: file.name,
-                    type: file.type
+                    type: file.type,
+                    timestamp: new Date().getTime() // タイムスタンプを追加
                 }));
                 
                 showDocumentSuccess(file.name);
@@ -766,6 +795,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 分析結果があれば表示（成功メッセージに追加情報を表示）
                 if (data.has_analysis) {
                     document.getElementById('documentSuccessMessage').innerHTML += '<br><small class="text-success mt-1"><i class="bi bi-check-circle"></i> 文書分析が完了しました。詳細情報が利用可能です。</small>';
+                    // 分析結果を取得して表示
+                    setTimeout(() => {
+                        fetchDocumentAnalysis();
+                    }, 500);
                 }
                 
                 // ドキュメントを使用したディスカッション生成を有効化
@@ -1017,7 +1050,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // 文書がアップロードされているか確認
+        // セッションステータスをコンソールに表示（デバッグ用）
+        console.log("Document session data:", sessionStorage.getItem('uploadedDocument'));
+        
+        // サーバーからドキュメントのステータスを確認
         fetch('/get-document-text', {
             method: 'GET'
         })
@@ -1028,12 +1064,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 生成処理の開始
                 generateDiscussionWithDocument(topic, roles, numTurns);
             } else {
+                // セッションステータスをクライアント側でリセットする
+                sessionStorage.removeItem('uploadedDocument');
                 showError('有効なドキュメントがアップロードされていません。先にドキュメントをアップロードしてください。');
+                
+                // ドキュメントステータス表示をリセット
+                document.getElementById('documentName').textContent = 'ファイルアップロード待ち';
+                generateWithDocBtn.disabled = true;
+                
+                console.error("Server could not find the document, session is invalid");
             }
         })
         .catch(error => {
             console.error("Error verifying document:", error);
             showError('ドキュメントの確認中にエラーが発生しました。再度ドキュメントをアップロードしてください。');
+            
+            // エラー時にもセッションをクリア
+            sessionStorage.removeItem('uploadedDocument');
         });
     }
     
