@@ -265,15 +265,42 @@ def upload_document():
             logger.error(f"Failed to process document: {result['message']}")
             return jsonify({'error': result['message']}), 400
             
-        # ベクトルストアをセッションに保存
-        # 注意: ベクトルストアオブジェクト自体は保存できないため、テキスト内容だけを保存
-        session['document_text'] = result['text_content']
-        session['document_uploaded'] = True
-        session['document_name'] = filename
-        
-        # 文書の概要情報も保存（最初の500文字程度）
-        document_summary = result['text_content'][:500] + "..." if len(result['text_content']) > 500 else result['text_content']
-        session['document_summary'] = document_summary
+        # 重要な問題: セッションクッキーのサイズ制限
+        # テキストをセッションに直接保存するとクッキーサイズが大きくなりすぎる問題があるため、
+        # 一時ファイルに保存するよう変更
+        try:
+            import os
+            import tempfile
+            import uuid
+            
+            # 一時ファイルのパスを構築
+            temp_dir = os.path.join(tempfile.gettempdir(), 'document_content')
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # 一意のIDを生成
+            document_id = str(uuid.uuid4())
+            
+            # ドキュメントテキストをファイルに保存
+            document_file_path = os.path.join(temp_dir, f"{document_id}.txt")
+            with open(document_file_path, 'w', encoding='utf-8') as f:
+                f.write(result['text_content'])
+            
+            # セッションにはファイルへの参照のみを保存
+            session['document_id'] = document_id
+            session['document_uploaded'] = True
+            session['document_name'] = filename
+            
+            logger.info(f"Document text saved to temporary file: {document_file_path}")
+            
+            # 文書の概要情報も保存（最初の300文字程度に制限）
+            document_summary = result['text_content'][:300] + "..." if len(result['text_content']) > 300 else result['text_content']
+            session['document_summary'] = document_summary
+        except Exception as file_error:
+            logger.error(f"Error saving document to temporary file: {str(file_error)}")
+            # エラー発生時は直接セッションに保存を試みる（リスク承知）
+            session['document_text'] = result['text_content']
+            session['document_uploaded'] = True
+            session['document_name'] = filename
         
         # 文書分析を自動的に開始する
         has_analysis = False
@@ -421,14 +448,45 @@ def create_discussion_with_document():
                 return jsonify({'error': 'AIモデルの初期化に失敗しました: ' + error_msg}), 500
         
         # ドキュメントのテキストを取得
-        document_text = session.get('document_text', '')
         document_name = session.get('document_name', 'アップロードされた文書')
+        document_text = ""
         
-        if not document_text or len(document_text.strip()) == 0:
-            logger.error("Document text is empty or not found in session")
+        # 新方式: 一時ファイルから読み込み
+        if 'document_id' in session:
+            document_id = session.get('document_id')
+            logger.info(f"Document ID found in session: {document_id}")
+            
+            try:
+                import os
+                import tempfile
+                
+                # 一時ファイルのパスを構築
+                temp_dir = os.path.join(tempfile.gettempdir(), 'document_content')
+                document_file_path = os.path.join(temp_dir, f"{document_id}.txt")
+                
+                # ファイルが存在するか確認
+                if os.path.exists(document_file_path):
+                    # ファイルからテキストを読み込む
+                    with open(document_file_path, 'r', encoding='utf-8') as f:
+                        document_text = f.read()
+                    
+                    logger.info(f"Document text loaded from file, length: {len(document_text)} characters")
+                else:
+                    logger.warning(f"Document file not found: {document_file_path}")
+            except Exception as file_error:
+                logger.error(f"Error reading document from file: {str(file_error)}")
+                # セッションから直接読み込みを試す（フォールバック）
+        
+        # 従来のセッションからの直接読み込み（ファイル取得に失敗した場合のフォールバック）
+        if not document_text and 'document_text' in session:
+            document_text = session.get('document_text', '')
+            logger.info(f"Document text loaded from session, length: {len(document_text)} characters")
+        
+        # テキストの検証
+        if not document_text or not isinstance(document_text, str) or len(document_text.strip()) == 0:
+            logger.error("Document text is empty or not found")
             return jsonify({'error': '文書内容が空または見つかりません。文書を再アップロードしてください。'}), 400
             
-        logger.info(f"Retrieved document text from session, length: {len(document_text)} characters")
         logger.info(f"Document name: {document_name}")
         
         # ログに文書内容のサンプルを記録（デバッグ用）
@@ -744,8 +802,36 @@ def provide_guidance_endpoint():
         document_text = ""
         if use_document and session.get('document_uploaded', False):
             try:
-                # ドキュメントテキストを取得
-                document_text = session.get('document_text', '')
+                # 新方式: 一時ファイルからドキュメントを読み込む
+                if 'document_id' in session:
+                    document_id = session.get('document_id')
+                    
+                    import os
+                    import tempfile
+                    
+                    # 一時ファイルのパスを構築
+                    temp_dir = os.path.join(tempfile.gettempdir(), 'document_content')
+                    document_file_path = os.path.join(temp_dir, f"{document_id}.txt")
+                    
+                    # ファイルが存在するか確認
+                    if os.path.exists(document_file_path):
+                        # ファイルからテキストを読み込む
+                        with open(document_file_path, 'r', encoding='utf-8') as f:
+                            document_text = f.read()
+                        
+                        logger.info(f"Document text loaded from file for guidance, length: {len(document_text)} characters")
+                    else:
+                        logger.warning(f"Document file not found for guidance: {document_file_path}")
+                
+                # ファイルからの読み込みに失敗した場合、旧方式でセッションから直接読み込む
+                if not document_text and 'document_text' in session:
+                    document_text = session.get('document_text', '')
+                    logger.info(f"Document text loaded from session for guidance, length: {len(document_text)} characters")
+                
+                # ドキュメントの有無を確認
+                if not document_text:
+                    logger.warning("No document content found for guidance")
+                    return jsonify({'error': '文書内容が見つかりません。文書を再アップロードしてください。'}), 400
                 
                 # テキストから再度ベクトルストアを作成
                 from agents.document_processor import split_text, create_vector_store
@@ -954,12 +1040,43 @@ def generate_next_turn_endpoint():
         if use_document:
             logger.info("Document reference requested for this turn")
             if 'document_uploaded' in session and session['document_uploaded']:
-                # ドキュメントテキストからベクトルストアを再作成
-                from agents.document_processor import create_vector_store, split_text
-                document_text = session.get('document_text', '')
+                # 新方式: 一時ファイルからドキュメントを読み込む
+                document_text = ""
                 
+                if 'document_id' in session:
+                    document_id = session.get('document_id')
+                    logger.info(f"Document ID found in session: {document_id}")
+                    
+                    try:
+                        import os
+                        import tempfile
+                        
+                        # 一時ファイルのパスを構築
+                        temp_dir = os.path.join(tempfile.gettempdir(), 'document_content')
+                        document_file_path = os.path.join(temp_dir, f"{document_id}.txt")
+                        
+                        # ファイルが存在するか確認
+                        if os.path.exists(document_file_path):
+                            # ファイルからテキストを読み込む
+                            with open(document_file_path, 'r', encoding='utf-8') as f:
+                                document_text = f.read()
+                            
+                            logger.info(f"Document text loaded from file for next turn, length: {len(document_text)} characters")
+                        else:
+                            logger.warning(f"Document file not found for next turn: {document_file_path}")
+                    except Exception as file_error:
+                        logger.error(f"Error reading document from file for next turn: {str(file_error)}")
+                
+                # ファイルからの読み込みに失敗した場合、旧方式でセッションから直接読み込む
+                if not document_text and 'document_text' in session:
+                    document_text = session.get('document_text', '')
+                    logger.info(f"Document text loaded from session for next turn, length: {len(document_text)} characters")
+                
+                # ドキュメントテキストの処理
                 if document_text:
-                    logger.info(f"Document found in session, length: {len(document_text)} characters")
+                    # ドキュメントテキストからベクトルストアを再作成
+                    from agents.document_processor import create_vector_store, split_text
+                    
                     sample_text = document_text[:200] + "..." if len(document_text) > 200 else document_text
                     logger.info(f"Document sample: {sample_text}")
                     
@@ -1090,8 +1207,36 @@ def continue_discussion_endpoint():
         
         if use_document and session.get('document_uploaded', False):
             logger.info("Using document reference for discussion continuation")
-            # ドキュメントテキストを取得
-            document_text = session.get('document_text', '')
+            
+            # 新方式: 一時ファイルからドキュメントを読み込む
+            if 'document_id' in session:
+                document_id = session.get('document_id')
+                logger.info(f"Document ID found in session for continuation: {document_id}")
+                
+                try:
+                    import os
+                    import tempfile
+                    
+                    # 一時ファイルのパスを構築
+                    temp_dir = os.path.join(tempfile.gettempdir(), 'document_content')
+                    document_file_path = os.path.join(temp_dir, f"{document_id}.txt")
+                    
+                    # ファイルが存在するか確認
+                    if os.path.exists(document_file_path):
+                        # ファイルからテキストを読み込む
+                        with open(document_file_path, 'r', encoding='utf-8') as f:
+                            document_text = f.read()
+                        
+                        logger.info(f"Document text loaded from file for continuation, length: {len(document_text)} characters")
+                    else:
+                        logger.warning(f"Document file not found for continuation: {document_file_path}")
+                except Exception as file_error:
+                    logger.error(f"Error reading document from file for continuation: {str(file_error)}")
+            
+            # ファイルからの読み込みに失敗した場合は従来のセッション方式を試す
+            if not document_text and 'document_text' in session:
+                document_text = session.get('document_text', '')
+                logger.info(f"Document text loaded from session for continuation, length: {len(document_text)} characters")
             
             if document_text:
                 # テキストから再度ベクトルストアを作成
@@ -1107,6 +1252,8 @@ def continue_discussion_endpoint():
                     logger.warning("Failed to create vector store for continuation")
                     # 継続はするが、文書参照なしで
                     logger.info("Continuing without document reference")
+            else:
+                logger.warning("No document content found for continuation")
                     
         # ドキュメントテキストとトピックを組み合わせて新しいトピックを作成（文書参照時のみ）
         enhanced_topic = topic
@@ -1181,26 +1328,83 @@ def get_document_text():
     try:
         # セッションの状態を詳細にロギング
         logger.debug(f"Session document state: document_uploaded={session.get('document_uploaded', False)}")
-        logger.debug(f"Session contains document_text: {'document_text' in session}")
+        logger.debug(f"Session data keys: {list(session.keys())}")
         
         # ドキュメントがアップロードされている場合
-        if 'document_uploaded' in session and session['document_uploaded'] and 'document_text' in session:
-            document_text = session.get('document_text', '')
+        if 'document_uploaded' in session and session['document_uploaded']:
             
-            # テキストが実際に存在するかチェック
-            if document_text and isinstance(document_text, str) and len(document_text) > 0:
-                logger.debug(f"Document text found, length: {len(document_text)} characters")
-                return jsonify({
-                    'success': True,
-                    'document_text': document_text
-                })
+            # 新方式: 一時ファイルから読み込み
+            if 'document_id' in session:
+                document_id = session.get('document_id')
+                logger.info(f"Document ID found in session: {document_id}")
+                
+                try:
+                    import os
+                    import tempfile
+                    
+                    # 一時ファイルのパスを構築
+                    temp_dir = os.path.join(tempfile.gettempdir(), 'document_content')
+                    document_file_path = os.path.join(temp_dir, f"{document_id}.txt")
+                    
+                    # ファイルが存在するか確認
+                    if os.path.exists(document_file_path):
+                        # ファイルからテキストを読み込む
+                        with open(document_file_path, 'r', encoding='utf-8') as f:
+                            document_text = f.read()
+                        
+                        # テキストの検証
+                        if document_text and len(document_text) > 0:
+                            logger.info(f"Document text loaded from file, length: {len(document_text)} characters")
+                            return jsonify({
+                                'success': True,
+                                'document_text': document_text
+                            })
+                        else:
+                            logger.warning("Document file exists but content is empty")
+                            return jsonify({
+                                'success': False,
+                                'error': 'ドキュメントファイルの内容が空です'
+                            })
+                    else:
+                        logger.warning(f"Document file not found: {document_file_path}")
+                        # 不整合の修正
+                        session['document_uploaded'] = False
+                        session.pop('document_id', None)
+                        return jsonify({
+                            'success': False,
+                            'error': 'ドキュメントファイルが見つかりません'
+                        })
+                except Exception as file_error:
+                    logger.error(f"Error reading document from file: {str(file_error)}")
+                    # ファイルからの読み込みに失敗した場合は従来のセッション方式を試す
+            
+            # 従来のセッションからの直接読み込み（後方互換性用）
+            if 'document_text' in session:
+                document_text = session.get('document_text', '')
+                
+                # テキストが実際に存在するかチェック
+                if document_text and isinstance(document_text, str) and len(document_text) > 0:
+                    logger.debug(f"Document text found in session, length: {len(document_text)} characters")
+                    return jsonify({
+                        'success': True,
+                        'document_text': document_text
+                    })
+                else:
+                    logger.warning("Document marked as uploaded but text in session is empty or invalid")
+                    # セッションフラグを修正
+                    session['document_uploaded'] = False
+                    session.pop('document_text', None)
+                    return jsonify({
+                        'success': False,
+                        'error': 'ドキュメントテキストが無効または空です'
+                    })
             else:
-                logger.warning("Document marked as uploaded but text is empty or invalid")
+                logger.warning("Document marked as uploaded but no text or document_id in session")
                 # セッションフラグを修正
                 session['document_uploaded'] = False
                 return jsonify({
                     'success': False,
-                    'error': 'ドキュメントテキストが無効または空です'
+                    'error': 'セッションにドキュメントデータがありません'
                 })
         else:
             logger.info("No document uploaded in this session")
@@ -1278,8 +1482,28 @@ def get_document_analysis():
             # 分析結果がない場合は自動分析を試行
             if 'document_uploaded' in session and session['document_uploaded']:
                 try:
-                    document_text = session.get('document_text', '')
+                    # 文書IDに基づいて一時ファイルから読み込み
+                    document_text = ""
                     filename = session.get('document_name', 'document.txt')
+                    
+                    if 'document_id' in session:
+                        document_id = session.get('document_id')
+                        try:
+                            temp_dir = os.path.join(tempfile.gettempdir(), 'document_content')
+                            document_file_path = os.path.join(temp_dir, f"{document_id}.txt")
+                            
+                            if os.path.exists(document_file_path):
+                                with open(document_file_path, 'r', encoding='utf-8') as f:
+                                    document_text = f.read()
+                                logger.info(f"Document text loaded from file for analysis, length: {len(document_text)} characters")
+                        except Exception as file_error:
+                            logger.error(f"Error reading document from file for analysis: {str(file_error)}")
+                    
+                    # フォールバック: セッションから直接読み込み
+                    if not document_text and 'document_text' in session:
+                        document_text = session.get('document_text', '')
+                        logger.info(f"Document text loaded from session for analysis, length: {len(document_text)} characters")
+                        
                     api_key = os.environ.get('GEMINI_API_KEY')
                     
                     if document_text and api_key:
