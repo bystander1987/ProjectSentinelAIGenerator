@@ -1,11 +1,16 @@
 """
 文書処理モジュール - ユーザーがアップロードした文書を処理し、RAGシステムとして利用する機能
+高度なファイル分析とインデックス作成機能を提供
 """
 
 import os
 import logging
 import tempfile
-from typing import List, Dict, Union, Optional
+import re
+import json
+import datetime
+from typing import List, Dict, Union, Optional, Tuple, Any
+from collections import Counter
 
 # ドキュメント処理用のライブラリ
 import PyPDF2
@@ -14,7 +19,7 @@ import pandas as pd
 import tiktoken
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 
 # ログ設定
 logger = logging.getLogger(__name__)

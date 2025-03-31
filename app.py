@@ -184,11 +184,56 @@ def upload_document():
         document_summary = result['text_content'][:500] + "..." if len(result['text_content']) > 500 else result['text_content']
         session['document_summary'] = document_summary
         
+        # 文書分析を自動的に開始する
+        has_analysis = False
+        try:
+            logger.info(f"Starting automatic document analysis for: {filename}")
+            # 文書分析モジュールを動的にインポート
+            from agents.document_analyzer import create_document_analysis_report
+            
+            # 文書分析を実行
+            analysis_report = create_document_analysis_report(
+                document_text=result['text_content'],
+                filename=filename,
+                api_key=api_key
+            )
+            
+            if analysis_report and analysis_report.get('success'):
+                logger.info(f"Document analysis successful, storing results in session")
+                # 分析結果をセッションに保存（サイズを考慮して要約のみ）
+                session['document_analysis'] = {
+                    'summary': analysis_report.get('summary', ''),
+                    'metadata': analysis_report.get('metadata', {}),
+                    'structure': {
+                        'paragraph_count': analysis_report.get('structure', {}).get('paragraph_count', 0),
+                        'sections_count': len(analysis_report.get('structure', {}).get('sections', [])),
+                        'key_terms': analysis_report.get('structure', {}).get('key_terms', [])[:10]
+                    }
+                }
+                has_analysis = True
+                
+                # 詳細な分析結果はRAG用の構造化データとして処理
+                if analysis_report.get('content_analysis', {}).get('success'):
+                    from agents.document_analyzer import extract_key_information_for_rag
+                    rag_data = extract_key_information_for_rag(result['text_content'], api_key)
+                    if rag_data and rag_data.get('success'):
+                        logger.info(f"RAG optimization data successfully extracted")
+                        session['document_rag_data'] = {
+                            'key_concepts': rag_data.get('key_concepts', [])[:5],
+                            'search_keywords': rag_data.get('search_keywords', [])[:10]
+                        }
+            else:
+                logger.warning(f"Document analysis failed: {analysis_report.get('error', '不明なエラー')}")
+        except Exception as analysis_error:
+            logger.error(f"Error during document analysis: {str(analysis_error)}")
+            # 分析エラーは処理を中断しない
+        
         logger.info(f"Document successfully processed and stored in session: {filename}")
         return jsonify({
             'success': True,
             'message': result['message'],
-            'filename': filename
+            'filename': filename,
+            'has_analysis': has_analysis
         })
         
     except Exception as e:
@@ -339,6 +384,11 @@ def clear_document():
         session.pop('document_uploaded', None)
         session.pop('document_name', None)
         session.pop('document_summary', None)
+        
+        # 分析データもクリア
+        session.pop('document_analysis', None)
+        session.pop('document_rag_data', None)
+        
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error clearing document session: {str(e)}")
@@ -927,6 +977,72 @@ def get_document_text():
         return jsonify({
             'success': False,
             'error': f'ドキュメントテキストの取得中にエラーが発生しました: {str(e)}'
+        })
+
+@app.route('/get-document-analysis', methods=['GET'])
+def get_document_analysis():
+    """セッションに保存されている文書分析結果を取得する"""
+    try:
+        if 'document_analysis' in session:
+            analysis = session.get('document_analysis', {})
+            rag_data = session.get('document_rag_data', {})
+            
+            # 分析情報と拡張RAGデータを組み合わせて返す
+            return jsonify({
+                'success': True,
+                'analysis': analysis,
+                'rag_data': rag_data,
+                'document_name': session.get('document_name', '')
+            })
+        else:
+            # 分析結果がない場合は自動分析を試行
+            if 'document_uploaded' in session and session['document_uploaded']:
+                try:
+                    document_text = session.get('document_text', '')
+                    filename = session.get('document_name', 'document.txt')
+                    api_key = os.environ.get('GEMINI_API_KEY')
+                    
+                    if document_text and api_key:
+                        logger.info("No analysis found, generating on-demand analysis")
+                        from agents.document_analyzer import create_document_analysis_report
+                        
+                        analysis_report = create_document_analysis_report(
+                            document_text=document_text,
+                            filename=filename,
+                            api_key=api_key
+                        )
+                        
+                        if analysis_report and analysis_report.get('success'):
+                            logger.info("Successfully generated document analysis on-demand")
+                            # 分析結果をセッションに保存
+                            session['document_analysis'] = {
+                                'summary': analysis_report.get('summary', ''),
+                                'metadata': analysis_report.get('metadata', {}),
+                                'structure': {
+                                    'paragraph_count': analysis_report.get('structure', {}).get('paragraph_count', 0),
+                                    'sections_count': len(analysis_report.get('structure', {}).get('sections', [])),
+                                    'key_terms': analysis_report.get('structure', {}).get('key_terms', [])[:10]
+                                }
+                            }
+                            
+                            return jsonify({
+                                'success': True,
+                                'analysis': session['document_analysis'],
+                                'document_name': filename,
+                                'generated_now': True
+                            })
+                except Exception as analysis_error:
+                    logger.error(f"Error generating on-demand analysis: {str(analysis_error)}")
+                    
+            return jsonify({
+                'success': False,
+                'error': '文書分析結果が見つかりません'
+            })
+    except Exception as e:
+        logger.error(f"Error retrieving document analysis: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'文書分析結果の取得中にエラーが発生しました: {str(e)}'
         })
 
 if __name__ == '__main__':

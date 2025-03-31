@@ -757,6 +757,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 showDocumentSuccess(file.name);
                 updateDocumentInfo(file.name);
                 
+                // 分析結果があれば表示（成功メッセージに追加情報を表示）
+                if (data.has_analysis) {
+                    document.getElementById('documentSuccessMessage').innerHTML += '<br><small class="text-success mt-1"><i class="bi bi-check-circle"></i> 文書分析が完了しました。詳細情報が利用可能です。</small>';
+                }
+                
                 // ドキュメントを使用したディスカッション生成を有効化
                 generateWithDocBtn.disabled = false;
             } else {
@@ -774,6 +779,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function showDocumentSuccess(fileName) {
         uploadedFileName.textContent = fileName;
         documentUploadStatus.classList.remove('d-none');
+        // ID付きで参照できるように
+        documentUploadStatus.innerHTML = `<div id="documentSuccessMessage" class="mb-0">ファイル <strong>${fileName}</strong> が正常にアップロードされました。</div>`;
     }
     
     function hideDocumentSuccess() {
@@ -792,6 +799,132 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateDocumentInfo(fileName) {
         documentName.textContent = fileName;
         documentInfo.classList.remove('d-none');
+        
+        // 文書分析情報を取得して表示
+        fetchDocumentAnalysis();
+    }
+    
+    function fetchDocumentAnalysis() {
+        fetch('/get-document-analysis', {
+            method: 'GET'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayDocumentAnalysis(data.analysis, data.rag_data, data.document_name);
+            } else {
+                console.log("No document analysis available:", data.error);
+            }
+        })
+        .catch(error => {
+            console.error("Error fetching document analysis:", error);
+        });
+    }
+    
+    function displayDocumentAnalysis(analysis, ragData, fileName) {
+        // 分析結果表示用のコンテナを取得または作成
+        let analysisContainer = document.getElementById('documentAnalysisContainer');
+        if (!analysisContainer) {
+            analysisContainer = document.createElement('div');
+            analysisContainer.id = 'documentAnalysisContainer';
+            analysisContainer.className = 'mt-3 mb-4';
+            
+            // 文書情報の後に挿入
+            const documentInfoSection = document.getElementById('documentInfo');
+            documentInfoSection.parentNode.insertBefore(analysisContainer, documentInfoSection.nextSibling);
+        }
+        
+        // 分析結果がなければ何もしない
+        if (!analysis) {
+            analysisContainer.innerHTML = '';
+            return;
+        }
+        
+        // 分析結果を表示
+        let analysisContent = `
+        <div class="card border-info">
+            <div class="card-header bg-info bg-opacity-25">
+                <h5 class="mb-0">
+                    <i class="bi bi-search"></i> 文書分析結果
+                    <button class="btn btn-sm btn-outline-primary float-end" type="button" data-bs-toggle="collapse" 
+                            data-bs-target="#analysisCollapse" aria-expanded="false" aria-controls="analysisCollapse">
+                        詳細表示
+                    </button>
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="analysis-summary mb-2">
+                    <strong>要約:</strong> ${analysis.summary || '要約なし'}
+                </p>
+                
+                <div class="collapse" id="analysisCollapse">
+                    <div class="card card-body bg-light mt-2 mb-3">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-file-earmark-text"></i> 文書メタデータ</h6>
+                                <ul class="list-unstyled">
+                                    <li><small>ファイル名: ${fileName}</small></li>
+                                    <li><small>文書タイプ: ${analysis.metadata?.document_type || '不明'}</small></li>
+                                    <li><small>推定タイトル: ${analysis.metadata?.estimated_title || '不明'}</small></li>
+                                    <li><small>日付: ${analysis.metadata?.possible_date || '記載なし'}</small></li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-layout-text-window"></i> 文書構造</h6>
+                                <ul class="list-unstyled">
+                                    <li><small>段落数: ${analysis.structure?.paragraph_count || 0}</small></li>
+                                    <li><small>セクション数: ${analysis.structure?.sections_count || 0}</small></li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <h6><i class="bi bi-tags"></i> 重要キーワード</h6>
+                            <div>
+        `;
+        
+        // キーワードを表示（ある場合）
+        if (analysis.structure?.key_terms && analysis.structure.key_terms.length > 0) {
+            analysis.structure.key_terms.forEach(term => {
+                analysisContent += `<span class="badge bg-info bg-opacity-25 text-dark me-1 mb-1">${term}</span>`;
+            });
+        } else if (ragData?.search_keywords && ragData.search_keywords.length > 0) {
+            ragData.search_keywords.forEach(keyword => {
+                analysisContent += `<span class="badge bg-info bg-opacity-25 text-dark me-1 mb-1">${keyword}</span>`;
+            });
+        } else {
+            analysisContent += `<p class="small text-muted">重要キーワードがありません</p>`;
+        }
+        
+        analysisContent += `
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <h6><i class="bi bi-lightbulb"></i> 重要概念</h6>
+                            <div>
+        `;
+        
+        // 重要概念を表示（ある場合）
+        if (ragData?.key_concepts && ragData.key_concepts.length > 0) {
+            ragData.key_concepts.forEach(concept => {
+                const conceptName = typeof concept === 'object' ? concept.name : concept;
+                analysisContent += `<div class="badge bg-success bg-opacity-25 text-dark me-1 mb-1">${conceptName}</div>`;
+            });
+        } else {
+            analysisContent += `<p class="small text-muted">重要概念がありません</p>`;
+        }
+        
+        analysisContent += `
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+        
+        analysisContainer.innerHTML = analysisContent;
     }
     
     function clearUploadedDocument() {
@@ -860,14 +993,24 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // セッションにドキュメントがあるか確認
-        if (!sessionStorage.getItem('uploadedDocument')) {
-            showError('有効なドキュメントがアップロードされていません。先にドキュメントをアップロードしてください。');
-            return;
-        }
-        
-        // 生成処理の開始
-        generateDiscussionWithDocument(topic, roles, numTurns);
+        // 文書がアップロードされているか確認
+        fetch('/get-document-text', {
+            method: 'GET'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.document_text) {
+                console.log("Document verified, starting generation");
+                // 生成処理の開始
+                generateDiscussionWithDocument(topic, roles, numTurns);
+            } else {
+                showError('有効なドキュメントがアップロードされていません。先にドキュメントをアップロードしてください。');
+            }
+        })
+        .catch(error => {
+            console.error("Error verifying document:", error);
+            showError('ドキュメントの確認中にエラーが発生しました。再度ドキュメントをアップロードしてください。');
+        });
     }
     
     function generateDiscussionWithDocument(topic, roles, numTurns) {
