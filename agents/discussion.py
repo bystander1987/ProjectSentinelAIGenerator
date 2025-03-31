@@ -751,33 +751,73 @@ def generate_consultant_analysis(
         if vector_store:
             try:
                 from agents.document_processor import search_documents, create_context_from_documents
-                # テーマに関連する文書内容を広範囲に検索
-                search_query = f"{topic} 論点 重要 課題 分析"
-                document_chunks = search_documents(vector_store, search_query, top_k=10)
-                if document_chunks:
-                    document_context = create_context_from_documents(document_chunks, max_tokens=3000)
-                    logger.info(f"Retrieved document context for consultant analysis - {len(document_context)} chars")
+                
+                # まず文書全体の概要を把握するために広い範囲で検索
+                logger.info("Retrieving document content for consultant analysis")
+                
+                # 一般的な概要検索（幅広く文書をカバー）
+                search_query_general = "文書 全体 概要 目的 内容"
+                document_chunks_general = search_documents(vector_store, search_query_general, top_k=10)
+                
+                # テーマに関連する文書部分を検索
+                search_query_topic = f"{topic} 関連 重要"
+                document_chunks_topic = search_documents(vector_store, search_query_topic, top_k=10)
+                
+                # 数値データや重要事実の検索
+                search_query_data = "データ 数値 表 グラフ 重要 指標"
+                document_chunks_data = search_documents(vector_store, search_query_data, top_k=10)
+                
+                # 課題や論点の検索
+                search_query_issues = "課題 問題 論点 懸念 リスク"
+                document_chunks_issues = search_documents(vector_store, search_query_issues, top_k=10)
+                
+                # すべてのチャンクを結合して重複を削除
+                all_chunks = []
+                for chunk_list in [document_chunks_general, document_chunks_topic, document_chunks_data, document_chunks_issues]:
+                    if chunk_list:
+                        all_chunks.extend(chunk_list)
+                
+                # 重複を削除（セットに変換して再度リストに戻す）
+                unique_chunks = list(set(all_chunks))
+                
+                if unique_chunks:
+                    document_context = create_context_from_documents(unique_chunks, max_tokens=4000)
+                    logger.info(f"Retrieved comprehensive document context for consultant analysis - {len(document_context)} chars, {len(unique_chunks)} unique chunks")
+                else:
+                    logger.warning("No document chunks retrieved for consultant analysis")
+                    # 文書全体のテキストを直接使用するフォールバック（今後追加予定）
             except Exception as e:
-                logger.warning(f"Failed to retrieve document context for consultant analysis: {str(e)}")
+                logger.error(f"Failed to retrieve document context for consultant analysis: {str(e)}")
+                # エラーの詳細をログに記録
+                import traceback
+                logger.error(traceback.format_exc())
+                raise Exception(f"文書コンテキストの取得に失敗しました: {str(e)}")
+        
+        if not document_context:
+            logger.error("Empty document context for consultant analysis")
+            raise Exception("文書の内容を取得できませんでした。文書が正しくアップロードされているか確認してください。")
         
         roles_description = "\n".join([f"- {role}" for role in roles])
         
-        # コンサルタント分析用のプロンプト
+        # コンサルタント分析用のプロンプト - より詳細な指示を追加
         system_prompt = f"""
-        あなたは高度な戦略コンサルタントとして、まずアップロードされた文書の詳細な分析を提供し、その後テーマに基づいた議論の論点を設定します。
+        あなたは高度な戦略コンサルタントとして、アップロードされた文書を詳細に分析し、その後テーマに基づいた議論の論点を設定する役割です。
         
         【最優先指示】
-        アップロードされた文書の内容を唯一の情報源として扱い、文書全体を徹底的に分析してください。
-        文書に記載されている情報「のみ」を使用し、外部知識は一切使用してはいけません。
+        1. アップロードされた文書の内容を唯一の情報源として扱い、文書全体を徹底的に分析してください。
+        2. 文書に記載されている情報「のみ」を使用し、外部知識は一切使用してはいけません。
+        3. 文書に記載がない内容については「文書には記載がありません」と明示してください。
+        4. 一般的な知識や仮定に基づく分析は行わないでください。
         
-        文書分析において必ず以下の形式で情報を提示してください：
-        1. 各セクションで、文書から「」で囲んだ直接引用を最低3つ以上含める
-        2. 文書の構造（章立て、セクション構成など）を明示する
-        3. 文書内の数値データ、表、グラフ情報を正確に引用する
-        4. 文書の主題、目的、結論を文書内の記述に基づいて明示する
+        【分析方法の重要ポイント】
+        1. 各セクションでは、文書から「」または『』で囲んだ直接引用を最低5つ以上含めること
+        2. 引用する際は、可能な限り文書内のどの部分からの引用かを明示すること
+        3. 文書の構造（章立て、セクション構成など）を詳細に分析すること
+        4. 文書内のすべての数値データ、表、グラフ情報を正確に引用すること
+        5. 文書の主題、目的、背景、結論を文書内の記述に基づいて明示すること
         
-        最も重要なことは、議論の参加者全員が文書の全体像を正確に把握できるよう、文書から直接引用を豊富に含め、
-        あなたの分析が文書の内容に直接基づいていることを明示することです。
+        最も重要なことは、文書内容を正確に伝え、議論の参加者全員が文書の全体像を完全に把握できるようにすることです。
+        分析は網羅的かつ詳細で、文書からの直接引用が豊富に含まれていなければなりません。
         """
         
         prompt = f"""

@@ -60,20 +60,69 @@ def extract_text_from_docx(file_path: str) -> str:
 
 def extract_text_from_txt(file_path: str) -> str:
     """TXTファイルからテキストを抽出する"""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            return file.read()
-    except UnicodeDecodeError:
-        # UTF-8でデコードできない場合はSJISなど他のエンコーディングを試す
-        try:
-            with open(file_path, 'r', encoding='shift_jis') as file:
-                return file.read()
-        except Exception as e:
-            logger.error(f"Failed to extract text from TXT: {str(e)}")
-            return ""
-    except Exception as e:
-        logger.error(f"Failed to extract text from TXT: {str(e)}")
+    logger.info(f"Extracting text from TXT file: {file_path}")
+    
+    # 一般的なエンコーディングのリスト
+    encodings = ['utf-8', 'shift_jis', 'euc-jp', 'iso-2022-jp', 'cp932']
+    
+    # ファイルの存在を確認
+    if not os.path.exists(file_path):
+        logger.error(f"File does not exist: {file_path}")
         return ""
+    
+    # ファイルサイズをログに記録
+    file_size = os.path.getsize(file_path)
+    logger.info(f"TXT file size: {file_size} bytes")
+    
+    if file_size == 0:
+        logger.error("TXT file is empty (0 bytes)")
+        return ""
+    
+    # 各エンコーディングを試す
+    for encoding in encodings:
+        try:
+            logger.info(f"Trying to read TXT with encoding: {encoding}")
+            with open(file_path, 'r', encoding=encoding) as file:
+                text = file.read()
+                
+                # テキストの検証
+                if not text or len(text.strip()) == 0:
+                    logger.warning(f"Empty text with encoding {encoding}")
+                    continue
+                
+                # テキストのサンプルをログに記録
+                sample = text[:200] + "..." if len(text) > 200 else text
+                logger.info(f"Successfully read TXT file with encoding {encoding}, sample: {sample}")
+                return text
+                
+        except UnicodeDecodeError:
+            logger.warning(f"Failed to decode TXT with encoding {encoding}")
+            continue
+        except Exception as e:
+            logger.error(f"Error reading TXT file with encoding {encoding}: {str(e)}")
+            continue
+    
+    # バイナリモードで読み取りを試みる（最後の手段）
+    try:
+        logger.info("Trying binary read as last resort for TXT file")
+        with open(file_path, 'rb') as file:
+            binary_data = file.read()
+            
+            # 異なるエンコーディングでデコードを試みる
+            for encoding in encodings:
+                try:
+                    text = binary_data.decode(encoding, errors='replace')
+                    if text and len(text.strip()) > 0:
+                        logger.info(f"Binary read successful with encoding {encoding}")
+                        return text
+                except Exception as e:
+                    logger.warning(f"Binary decode failed with encoding {encoding}: {str(e)}")
+                    continue
+    except Exception as e:
+        logger.error(f"Binary read failed for TXT file: {str(e)}")
+    
+    logger.error("Failed to extract text from TXT file with all encodings")
+    return ""
 
 def extract_text_from_xlsx(file_path: str) -> str:
     """Excelファイル（.xlsx）からテキストを抽出する"""
@@ -190,26 +239,58 @@ def process_uploaded_file(file, api_key: str) -> Dict[str, Union[bool, str, FAIS
     
     try:
         # ファイル名と拡張子をチェック
+        if not file or not hasattr(file, 'filename') or not file.filename:
+            logger.error("Invalid file object or empty filename")
+            result["message"] = "無効なファイルです。"
+            return result
+            
         filename = file.filename
         extension = os.path.splitext(filename)[1].lower()
         
+        logger.info(f"Received file: {filename} with extension {extension}")
+        
         if extension not in SUPPORTED_FORMATS:
+            logger.error(f"Unsupported file format: {extension}, supported formats: {SUPPORTED_FORMATS}")
             result["message"] = f"サポートされていないファイル形式です。サポート形式: {', '.join(SUPPORTED_FORMATS)}"
             return result
         
         logger.info(f"Processing file: {filename} (type: {extension})")
         
         # 一時ファイルとして保存
-        with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as temp_file:
-            file.save(temp_file.name)
-            file_path = temp_file.name
+        temp_dir = tempfile.mkdtemp()
+        temp_file_path = os.path.join(temp_dir, filename)
+        
+        try:
+            file.save(temp_file_path)
+            logger.info(f"Temporarily saved file to: {temp_file_path}")
+            
+            # ファイルの存在とサイズを確認
+            if not os.path.exists(temp_file_path):
+                logger.error(f"Failed to save file: {temp_file_path} does not exist")
+                result["message"] = "ファイルの保存に失敗しました。"
+                return result
+                
+            file_size = os.path.getsize(temp_file_path)
+            logger.info(f"File size: {file_size} bytes")
+            
+            if file_size == 0:
+                logger.error("File is empty (0 bytes)")
+                result["message"] = "ファイルが空です。"
+                return result
             
             # テキスト抽出
-            text = extract_text_from_file(file_path)
+            logger.info(f"Extracting text from file: {filename}")
+            text = extract_text_from_file(temp_file_path)
             
-            if not text:
-                result["message"] = "ファイルからテキストを抽出できませんでした。"
-                logger.error(f"Failed to extract text from {filename}")
+            # テキスト抽出結果をチェック
+            if text is None:
+                logger.error(f"Text extraction returned None for {filename}")
+                result["message"] = "テキスト抽出中にエラーが発生しました。"
+                return result
+                
+            if not text or len(text.strip()) == 0:
+                logger.error(f"Failed to extract text or empty text from {filename}")
+                result["message"] = "ファイルからテキストを抽出できませんでした。ファイル形式が正しいか確認してください。"
                 return result
             
             logger.info(f"Successfully extracted {len(text)} characters from {filename}")
@@ -222,21 +303,23 @@ def process_uploaded_file(file, api_key: str) -> Dict[str, Union[bool, str, FAIS
             logger.info(f"Sample text from document: {sample_text}")
             
             # テキストを分割
+            logger.info(f"Splitting text into chunks")
             chunks = split_text(text)
             
-            if not chunks:
-                result["message"] = "テキストを適切に分割できませんでした。"
-                logger.error("Failed to split text into chunks")
+            if not chunks or len(chunks) == 0:
+                logger.error("Failed to split text into chunks - empty result")
+                result["message"] = "テキストを適切に分割できませんでした。文書の形式を確認してください。"
                 return result
             
             logger.info(f"Text split into {len(chunks)} chunks")
             
             # ベクトルストアを作成
+            logger.info(f"Creating vector store with {len(chunks)} chunks")
             vector_store = create_vector_store(chunks, api_key)
             
             if not vector_store:
-                result["message"] = "ベクトルストアの作成に失敗しました。"
-                logger.error("Failed to create vector store")
+                logger.error("Failed to create vector store - null result")
+                result["message"] = "ベクトルストアの作成に失敗しました。APIキーを確認してください。"
                 return result
             
             logger.info(f"Successfully created vector store with {len(chunks)} chunks")
@@ -246,6 +329,17 @@ def process_uploaded_file(file, api_key: str) -> Dict[str, Union[bool, str, FAIS
             result["message"] = f"ファイル '{filename}' を正常に処理しました。"
             result["vector_store"] = vector_store
             result["text_content"] = text
+            
+        finally:
+            # 一時ファイルのクリーンアップ
+            try:
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+                    logger.info(f"Removed temporary file: {temp_file_path}")
+                os.rmdir(temp_dir)
+                logger.info(f"Removed temporary directory: {temp_dir}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to clean up temporary files: {str(cleanup_error)}")
             
     except Exception as e:
         result["message"] = f"ファイル処理中にエラーが発生しました: {str(e)}"

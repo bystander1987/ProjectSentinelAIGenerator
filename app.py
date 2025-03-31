@@ -259,24 +259,48 @@ def create_discussion_with_document():
         
         # ドキュメントのテキストを取得
         document_text = session.get('document_text', '')
+        document_name = session.get('document_name', 'アップロードされた文書')
+        
+        if not document_text or len(document_text.strip()) == 0:
+            logger.error("Document text is empty or not found in session")
+            return jsonify({'error': '文書内容が空または見つかりません。文書を再アップロードしてください。'}), 400
+            
+        logger.info(f"Retrieved document text from session, length: {len(document_text)} characters")
+        logger.info(f"Document name: {document_name}")
+        
+        # ログに文書内容のサンプルを記録（デバッグ用）
+        sample_text = document_text[:200] + "..." if len(document_text) > 200 else document_text
+        logger.info(f"Document content sample: {sample_text}")
         
         # テキストから再度ベクトルストアを作成
         from agents.document_processor import split_text, create_vector_store
         
         # テキストをチャンクに分割
+        logger.info("Splitting document text into chunks")
         chunks = split_text(document_text)
         
+        if not chunks or len(chunks) == 0:
+            logger.error("Failed to split document into chunks")
+            return jsonify({'error': '文書をチャンクに分割できませんでした。別の文書を試してください。'}), 400
+            
+        logger.info(f"Successfully split document into {len(chunks)} chunks")
+        
         # ベクトルストアを作成
+        logger.info("Creating vector store from document chunks")
         vector_store = create_vector_store(chunks, api_key)
         
         if not vector_store:
             logger.error("Failed to create vector store from document")
             return jsonify({'error': 'ドキュメントからベクトルストアを作成できませんでした。'}), 500
             
+        logger.info("Vector store successfully created")
+            
         # ドキュメントテキストとトピックを組み合わせて新しいトピックを作成
         # 文書内容の先頭部分を追加して、文脈を強化
-        document_preview = document_text[:1000] if len(document_text) > 1000 else document_text
-        topic = f"{base_topic}\n\n文書内容:\n{document_preview}"
+        document_preview = document_text[:800] if len(document_text) > 800 else document_text
+        topic = f"{base_topic} (対象文書: {document_name})\n\n文書内容:\n{document_preview}"
+        
+        logger.info(f"Enhanced topic with document content preview")
         
         logger.info(f"Created enhanced topic with document content")
         
