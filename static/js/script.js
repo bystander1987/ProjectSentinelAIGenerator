@@ -958,6 +958,14 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // ドキュメントを使用したディスカッション生成を無効化
             generateWithDocBtn.disabled = true;
+            
+            // 念のため、ローカルストレージからも関連データをクリア
+            localStorage.removeItem('documentAnalysisData');
+            
+            // ページをリロードして完全にクリーンな状態にする
+            if (confirm('文書データを完全にクリアするためにページをリロードしますか？')) {
+                window.location.reload();
+            }
         })
         .catch(error => {
             console.error('Error clearing document:', error);

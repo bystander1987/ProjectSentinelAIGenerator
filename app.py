@@ -63,6 +63,37 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 @app.route('/')
 def index():
     """Render the main page of the application."""
+    # ページロード時にセッションをクリア
+    try:
+        # 文書関連のセッションデータをクリア
+        session.pop('document_text', None)
+        session.pop('document_uploaded', None)
+        session.pop('document_name', None)
+        session.pop('document_summary', None)
+        session.pop('document_analysis', None)
+        session.pop('document_rag_data', None)
+        
+        # 新方式の一時ファイルからも分析データをクリア
+        if 'document_analysis_id' in session:
+            analysis_id = session.pop('document_analysis_id', None)
+            if analysis_id:
+                try:
+                    import os
+                    import tempfile
+                    
+                    # 一時ファイルのパスを構築
+                    temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
+                    analysis_file_path = os.path.join(temp_dir, f"{analysis_id}.json")
+                    
+                    # ファイルが存在する場合は削除
+                    if os.path.exists(analysis_file_path):
+                        os.remove(analysis_file_path)
+                        logger.info(f"Removed temporary analysis file: {analysis_file_path}")
+                except Exception as file_error:
+                    logger.error(f"Error removing temporary analysis file: {str(file_error)}")
+    except Exception as e:
+        logger.error(f"Error clearing session on page load: {str(e)}")
+    
     return render_template('index.html')
 
 @app.route('/generate-discussion', methods=['POST'])
@@ -451,15 +482,21 @@ def clear_document():
     """セッションからドキュメント情報をクリアする"""
     try:
         logger.info("Clearing document from session")
-        session.pop('document_text', None)
-        session.pop('document_uploaded', None)
-        session.pop('document_name', None)
-        session.pop('document_summary', None)
+        # 全てのドキュメント関連データを一度に削除
+        keys_to_remove = [
+            'document_text', 
+            'document_uploaded', 
+            'document_name', 
+            'document_summary', 
+            'document_analysis', 
+            'document_rag_data'
+        ]
         
-        # 分析データもクリア
-        session.pop('document_analysis', None)
-        session.pop('document_rag_data', None)
-        
+        for key in keys_to_remove:
+            if key in session:
+                session.pop(key, None)
+                logger.info(f"Removed session key: {key}")
+            
         # 新方式の一時ファイルからも分析データをクリア
         if 'document_analysis_id' in session:
             analysis_id = session.pop('document_analysis_id', None)
@@ -467,6 +504,7 @@ def clear_document():
                 try:
                     import os
                     import tempfile
+                    import glob
                     
                     # 一時ファイルのパスを構築
                     temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
@@ -476,8 +514,29 @@ def clear_document():
                     if os.path.exists(analysis_file_path):
                         os.remove(analysis_file_path)
                         logger.info(f"Removed temporary analysis file: {analysis_file_path}")
+                        
+                    # 念のため、関連する全ての一時ファイルを削除
+                    try:
+                        # 3日以上経過した一時ファイルを削除（古いファイルのクリーンアップ）
+                        import time
+                        current_time = time.time()
+                        three_days_in_seconds = 3 * 24 * 60 * 60
+                        
+                        if os.path.exists(temp_dir):
+                            for file_path in glob.glob(os.path.join(temp_dir, "*.json")):
+                                if os.path.exists(file_path):
+                                    file_modified_time = os.path.getmtime(file_path)
+                                    if current_time - file_modified_time > three_days_in_seconds:
+                                        os.remove(file_path)
+                                        logger.info(f"Removed old temporary file: {file_path}")
+                    except Exception as cleanup_error:
+                        logger.error(f"Error cleaning up old temporary files: {str(cleanup_error)}")
+                        
                 except Exception as file_error:
                     logger.error(f"Error removing temporary analysis file: {str(file_error)}")
+        
+        # セッションを確実に保存（変更をすぐに反映させるため）
+        session.modified = True
         
         return jsonify({'success': True})
     except Exception as e:
