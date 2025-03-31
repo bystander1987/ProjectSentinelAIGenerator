@@ -858,7 +858,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </p>
                 
                 <div class="collapse" id="analysisCollapse">
-                    <div class="card card-body bg-light mt-2 mb-3">
+                    <div class="card card-body bg-dark text-light mt-2 mb-3">
                         <div class="row">
                             <div class="col-md-6">
                                 <h6><i class="bi bi-file-earmark-text"></i> 文書メタデータ</h6>
@@ -886,11 +886,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // キーワードを表示（ある場合）
         if (analysis.structure?.key_terms && analysis.structure.key_terms.length > 0) {
             analysis.structure.key_terms.forEach(term => {
-                analysisContent += `<span class="badge bg-info bg-opacity-25 text-dark me-1 mb-1">${term}</span>`;
+                analysisContent += `<span class="badge bg-info text-light me-1 mb-1">${term}</span>`;
             });
         } else if (ragData?.search_keywords && ragData.search_keywords.length > 0) {
             ragData.search_keywords.forEach(keyword => {
-                analysisContent += `<span class="badge bg-info bg-opacity-25 text-dark me-1 mb-1">${keyword}</span>`;
+                analysisContent += `<span class="badge bg-info text-light me-1 mb-1">${keyword}</span>`;
             });
         } else {
             analysisContent += `<p class="small text-muted">重要キーワードがありません</p>`;
@@ -909,7 +909,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (ragData?.key_concepts && ragData.key_concepts.length > 0) {
             ragData.key_concepts.forEach(concept => {
                 const conceptName = typeof concept === 'object' ? concept.name : concept;
-                analysisContent += `<div class="badge bg-success bg-opacity-25 text-dark me-1 mb-1">${conceptName}</div>`;
+                analysisContent += `<div class="badge bg-success text-light me-1 mb-1">${conceptName}</div>`;
             });
         } else {
             analysisContent += `<p class="small text-muted">重要概念がありません</p>`;
@@ -940,9 +940,15 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(() => {
-            // UI表示をクリア
-            documentInfo.classList.add('d-none');
+            // UI表示をリセット
+            document.getElementById('documentName').textContent = 'ファイルアップロード待ち';
             hideDocumentSuccess();
+            
+            // ドキュメント分析結果をクリア
+            const analysisContainer = document.getElementById('documentAnalysisContainer');
+            if (analysisContainer) {
+                analysisContainer.innerHTML = '';
+            }
             
             // ドキュメントを使用したディスカッション生成を無効化
             generateWithDocBtn.disabled = true;
@@ -965,6 +971,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error parsing document data:', e);
                 sessionStorage.removeItem('uploadedDocument');
             }
+        } else {
+            // ファイルがアップロードされていない初期状態ではデフォルトメッセージを表示
+            document.getElementById('documentName').textContent = 'ファイルアップロード待ち';
+            generateWithDocBtn.disabled = true;
         }
     }
     
