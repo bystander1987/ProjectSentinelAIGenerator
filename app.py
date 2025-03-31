@@ -4,6 +4,8 @@ import tempfile
 import time
 import json
 import pickle
+import hashlib
+import uuid
 from flask import Flask, render_template, request, jsonify, session, url_for
 from agents.discussion import (
     generate_discussion, get_gemini_model, summarize_discussion,
@@ -14,6 +16,46 @@ from agents.action_items import generate_action_items
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# 一時保存ディレクトリの設定
+TEMP_DIR = os.path.join(tempfile.gettempdir(), 'multirai_sessions')
+if not os.path.exists(TEMP_DIR):
+    os.makedirs(TEMP_DIR, exist_ok=True)
+
+def get_session_file_path(file_type: str) -> str:
+    """セッションID（またはユーザー固有のID）に基づいたファイルパスを生成する"""
+    # セッションIDがない場合は新しいIDを生成
+    if 'user_id' not in session:
+        session['user_id'] = str(uuid.uuid4())
+    
+    user_id = session['user_id']
+    # セッションIDをハッシュ化してファイル名に使用（安全対策）
+    hashed_id = hashlib.md5(user_id.encode()).hexdigest()
+    
+    # ファイルタイプに応じたパスを返す
+    return os.path.join(TEMP_DIR, f"{hashed_id}_{file_type}.json")
+    
+def save_large_session_data(data, file_type: str) -> bool:
+    """大きなセッションデータをファイルに保存する"""
+    try:
+        file_path = get_session_file_path(file_type)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
+        return True
+    except Exception as e:
+        logger.error(f"Error saving session data to file: {str(e)}")
+        return False
+        
+def load_large_session_data(file_type: str) -> dict:
+    """ファイルからセッションデータを読み込む"""
+    try:
+        file_path = get_session_file_path(file_type)
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading session data from file: {str(e)}")
+    return {}
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
@@ -200,8 +242,24 @@ def upload_document():
             
             if analysis_report and analysis_report.get('success'):
                 logger.info(f"Document analysis successful, storing results in session")
-                # 分析結果をセッションに保存（サイズを考慮して要約のみ）
-                session['document_analysis'] = {
+                # 分析結果を一時ファイルに保存（セッションサイズを小さく保つため）
+                import os
+                import json
+                import tempfile
+                import uuid
+                
+                # 一時ディレクトリのパスを確保
+                temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
+                os.makedirs(temp_dir, exist_ok=True)
+                
+                # 一意のIDを生成
+                analysis_id = str(uuid.uuid4())
+                
+                # 分析データをJSONとして保存
+                analysis_file_path = os.path.join(temp_dir, f"{analysis_id}.json")
+                
+                # 分析データを構築
+                analysis_data = {
                     'summary': analysis_report.get('summary', ''),
                     'metadata': analysis_report.get('metadata', {}),
                     'structure': {
@@ -210,18 +268,27 @@ def upload_document():
                         'key_terms': analysis_report.get('structure', {}).get('key_terms', [])[:10]
                     }
                 }
-                has_analysis = True
                 
-                # 詳細な分析結果はRAG用の構造化データとして処理
+                # RAG用のデータを追加
                 if analysis_report.get('content_analysis', {}).get('success'):
                     from agents.document_analyzer import extract_key_information_for_rag
                     rag_data = extract_key_information_for_rag(result['text_content'], api_key)
                     if rag_data and rag_data.get('success'):
                         logger.info(f"RAG optimization data successfully extracted")
-                        session['document_rag_data'] = {
+                        analysis_data['rag_data'] = {
                             'key_concepts': rag_data.get('key_concepts', [])[:5],
                             'search_keywords': rag_data.get('search_keywords', [])[:10]
                         }
+                
+                # ファイルに保存
+                with open(analysis_file_path, 'w', encoding='utf-8') as f:
+                    json.dump(analysis_data, f, ensure_ascii=False, indent=2)
+                
+                # ファイルへの参照だけをセッションに保存（軽量化）
+                session['document_analysis_id'] = analysis_id
+                has_analysis = True
+                
+                logger.info(f"Analysis data saved to temporary file: {analysis_file_path}")
             else:
                 logger.warning(f"Document analysis failed: {analysis_report.get('error', '不明なエラー')}")
         except Exception as analysis_error:
@@ -388,6 +455,25 @@ def clear_document():
         # 分析データもクリア
         session.pop('document_analysis', None)
         session.pop('document_rag_data', None)
+        
+        # 新方式の一時ファイルからも分析データをクリア
+        if 'document_analysis_id' in session:
+            analysis_id = session.pop('document_analysis_id', None)
+            if analysis_id:
+                try:
+                    import os
+                    import tempfile
+                    
+                    # 一時ファイルのパスを構築
+                    temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
+                    analysis_file_path = os.path.join(temp_dir, f"{analysis_id}.json")
+                    
+                    # ファイルが存在する場合は削除
+                    if os.path.exists(analysis_file_path):
+                        os.remove(analysis_file_path)
+                        logger.info(f"Removed temporary analysis file: {analysis_file_path}")
+                except Exception as file_error:
+                    logger.error(f"Error removing temporary analysis file: {str(file_error)}")
         
         return jsonify({'success': True})
     except Exception as e:
@@ -983,7 +1069,47 @@ def get_document_text():
 def get_document_analysis():
     """セッションに保存されている文書分析結果を取得する"""
     try:
-        if 'document_analysis' in session:
+        # 新しい方式: 一時ファイルから分析結果を読み込む
+        analysis_id = session.get('document_analysis_id')
+        if analysis_id:
+            import os
+            import json
+            import tempfile
+            
+            # 一時ファイルのパスを構築
+            temp_dir = os.path.join(tempfile.gettempdir(), 'document_analysis')
+            analysis_file_path = os.path.join(temp_dir, f"{analysis_id}.json")
+            
+            # ファイルから分析データを読み込む
+            if os.path.exists(analysis_file_path):
+                with open(analysis_file_path, 'r', encoding='utf-8') as f:
+                    analysis_data = json.load(f)
+                
+                # 分析データを分割
+                analysis = {
+                    'summary': analysis_data.get('summary', ''),
+                    'metadata': analysis_data.get('metadata', {}),
+                    'structure': analysis_data.get('structure', {})
+                }
+                
+                rag_data = analysis_data.get('rag_data', {})
+                
+                # 分析情報と拡張RAGデータを組み合わせて返す
+                return jsonify({
+                    'success': True,
+                    'analysis': analysis,
+                    'rag_data': rag_data,
+                    'document_name': session.get('document_name', '')
+                })
+            else:
+                logger.warning(f"Analysis file not found: {analysis_file_path}")
+                return jsonify({
+                    'success': False,
+                    'error': '文書分析結果が見つかりません'
+                })
+                
+        # 旧式のセッション保存（互換性のため保持）
+        elif 'document_analysis' in session:
             analysis = session.get('document_analysis', {})
             rag_data = session.get('document_rag_data', {})
             
