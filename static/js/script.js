@@ -279,7 +279,7 @@ document.addEventListener('DOMContentLoaded', function() {
             discussionContainer.classList.remove('discussion-continued');
             
             // ドキュメントが存在する場合、最初に表示
-            if (document.getElementById('document-info').classList.contains('d-flex')) {
+            if (document.getElementById('documentInfo').classList.contains('d-flex')) {
                 // ドキュメントの内容を表示
                 fetch('/get-document-text', {
                     method: 'GET'
@@ -514,7 +514,7 @@ document.addEventListener('DOMContentLoaded', function() {
             loadingIndicator.classList.add('d-none');
             discussionContainer.classList.remove('d-none');
             generateBtn.disabled = false;
-            generateWithDocBtn.disabled = document.getElementById('documentInfo').classList.contains('d-none');
+            generateWithDocBtn.disabled = !document.getElementById('documentInfo').classList.contains('d-flex');
             generateActionItemsBtn.disabled = discussionContainer.children.length === 0;
         }
     }
@@ -897,7 +897,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </p>
                 
                 <div class="collapse" id="analysisCollapse">
-                    <div class="card card-body bg-dark text-light mt-2 mb-3">
+                    <div class="card card-body mt-2 mb-3" style="background-color: #000; color: var(--bs-light);">
                         <div class="row">
                             <div class="col-md-6">
                                 <h6><i class="bi bi-file-earmark-text"></i> 文書メタデータ</h6>
@@ -1163,12 +1163,12 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(data => {
                 if (data.success && data.document_text) {
                     const documentCard = document.createElement('div');
-                    documentCard.className = 'card mb-3 bg-light border-info';
+                    documentCard.className = 'document-display card mb-3 border-info';
                     documentCard.innerHTML = `
                         <div class="card-header bg-info bg-opacity-25">
                             <strong><i class="bi bi-file-text"></i> アップロードされた文書</strong>
                         </div>
-                        <div class="card-body">
+                        <div class="card-body document-body">
                             <div class="document-content" style="max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-size: 0.85rem;">${data.document_text}</div>
                         </div>
                     `;

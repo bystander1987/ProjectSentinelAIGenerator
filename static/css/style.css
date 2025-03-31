@@ -213,3 +213,26 @@
 .discussion-bubble:nth-child(even)::after {
     border-right-color: var(--bs-dark);
 }
+
+/* アップロードされた文書表示のスタイル */
+.document-display .card-body {
+    background-color: #000;
+    color: var(--bs-light);
+    padding: 1rem;
+}
+
+.document-content {
+    background-color: #000;
+    color: var(--bs-light);
+    white-space: pre-wrap;
+    font-family: monospace;
+    border-radius: 0.25rem;
+}
+
+/* 文書分析結果表示のスタイル */
+#analysisCollapse {
+    background-color: #000;
+    color: var(--bs-light);
+    padding: 1rem;
+    border-radius: 0.25rem;
+}
