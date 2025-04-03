@@ -58,19 +58,31 @@
                             <div class="mb-3">
                                 <label class="form-label">参加者の役割</label>
                                 <div id="rolesContainer">
-                                    <div class="input-group mb-2">
-                                        <input type="text" class="form-control role-input" 
-                                            placeholder="役割の説明" required>
-                                        <button class="btn btn-outline-danger remove-role-btn" type="button" disabled>
-                                            <i class="bi bi-trash"></i>
-                                        </button>
+                                    <div class="role-input-group mb-3">
+                                        <div class="mb-2">
+                                            <input type="text" class="form-control role-name-input" 
+                                                placeholder="役割名 (例: 事業部長)" required>
+                                        </div>
+                                        <div class="input-group">
+                                            <textarea class="form-control role-description-input" 
+                                                placeholder="役割の説明 (例: 事業戦略と予算の責任者)" rows="2" required></textarea>
+                                            <button class="btn btn-outline-danger remove-role-btn" type="button" disabled>
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div class="input-group mb-2">
-                                        <input type="text" class="form-control role-input" 
-                                            placeholder="役割の説明" required>
-                                        <button class="btn btn-outline-danger remove-role-btn" type="button" disabled>
-                                            <i class="bi bi-trash"></i>
-                                        </button>
+                                    <div class="role-input-group mb-3">
+                                        <div class="mb-2">
+                                            <input type="text" class="form-control role-name-input" 
+                                                placeholder="役割名 (例: 開発責任者)" required>
+                                        </div>
+                                        <div class="input-group">
+                                            <textarea class="form-control role-description-input" 
+                                                placeholder="役割の説明 (例: エンジニアリング組織のリーダー)" rows="2" required></textarea>
+                                            <button class="btn btn-outline-danger remove-role-btn" type="button" disabled>
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 <button type="button" class="btn btn-outline-secondary btn-sm" id="addRoleBtn">

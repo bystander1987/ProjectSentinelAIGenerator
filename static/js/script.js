@@ -127,9 +127,23 @@ document.addEventListener('DOMContentLoaded', function() {
         const topic = topicInput.value.trim();
         const numTurns = parseInt(numTurnsInput.value);
         
-        // Get all role inputs
-        const roleInputs = document.querySelectorAll('.role-input');
-        const roles = Array.from(roleInputs).map(input => input.value.trim()).filter(role => role);
+        // 名前と説明の入力フィールドを取得
+        const roleNameInputs = document.querySelectorAll('.role-name-input');
+        const roleDescriptionInputs = document.querySelectorAll('.role-description-input');
+        
+        // 名前と説明をペアにして役割オブジェクトを作成
+        const roles = [];
+        for (let i = 0; i < roleNameInputs.length; i++) {
+            const name = roleNameInputs[i].value.trim();
+            const description = roleDescriptionInputs[i].value.trim();
+            
+            if (name && description) {
+                roles.push({
+                    name: name,
+                    description: description
+                });
+            }
+        }
         
         // Validate inputs
         if (!topic) {
@@ -468,21 +482,33 @@ document.addEventListener('DOMContentLoaded', function() {
         enableExportButtons();
     }
     
-    function addRoleInput(roleText = '') {
-        const roleInputs = document.querySelectorAll('.role-input');
+    function addRoleInput(roleData = { name: '', description: '' }) {
+        // 役割名と説明を分離して処理
+        const roleName = typeof roleData === 'string' ? roleData : roleData.name || '';
+        const roleDescription = typeof roleData === 'string' ? '' : roleData.description || '';
         
-        if (roleInputs.length >= 6) {
+        // 既存の役割数をチェック（名前入力フィールドでカウント）
+        const roleNameInputs = document.querySelectorAll('.role-name-input');
+        
+        if (roleNameInputs.length >= 6) {
             showError('最大6つまでの役割を設定できます');
             return;
         }
         
         const div = document.createElement('div');
-        div.className = 'input-group mb-2 role-input-group';
+        div.className = 'role-input-group mb-3';
         div.innerHTML = `
-            <input type="text" class="form-control role-input" placeholder="役割の説明" value="${escapeHtml(roleText)}" required>
-            <button class="btn btn-outline-danger remove-role-btn" type="button">
-                <i class="bi bi-trash"></i>
-            </button>
+            <div class="mb-2">
+                <input type="text" class="form-control role-name-input" 
+                    placeholder="役割名 (例: 事業部長)" value="${escapeHtml(roleName)}" required>
+            </div>
+            <div class="input-group">
+                <textarea class="form-control role-description-input" 
+                    placeholder="役割の説明 (例: 事業戦略と予算の責任者)" rows="2" required>${escapeHtml(roleDescription)}</textarea>
+                <button class="btn btn-outline-danger remove-role-btn" type="button">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
         `;
         
         rolesContainer.appendChild(div);
@@ -493,17 +519,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const button = e.target.closest('.remove-role-btn');
         if (!button) return;
         
-        button.closest('.input-group').remove();
+        button.closest('.role-input-group').remove();
         updateRemoveButtons();
     }
     
     function updateRemoveButtons() {
-        const roleInputs = document.querySelectorAll('.role-input');
+        const roleGroups = document.querySelectorAll('.role-input-group');
         const removeButtons = document.querySelectorAll('.remove-role-btn');
         
         // Disable remove buttons if there are only 2 roles
         removeButtons.forEach(button => {
-            button.disabled = roleInputs.length <= 2;
+            button.disabled = roleGroups.length <= 2;
         });
     }
     
@@ -517,18 +543,36 @@ document.addEventListener('DOMContentLoaded', function() {
         // Clear existing roles
         rolesContainer.innerHTML = '';
         
-        // Add roles
+        // Add roles - サンプルでは役割名と説明を分離
+        // 例："プロジェクトマネージャー（開発工程全体の管理責任者...）" → 名前と説明に分ける
         roles.forEach(role => {
-            const div = document.createElement('div');
-            div.className = 'input-group mb-2 role-input-group';
-            div.innerHTML = `
-                <input type="text" class="form-control role-input" placeholder="役割の説明" value="${role}" required>
-                <button class="btn btn-outline-danger remove-role-btn" type="button">
-                    <i class="bi bi-trash"></i>
-                </button>
-            `;
+            // 役割名と説明を抽出する処理
+            let roleName = '';
+            let roleDescription = '';
             
-            rolesContainer.appendChild(div);
+            // 括弧で囲まれた部分を検出して役割名と説明に分離
+            const match = role.match(/^(.+?)（(.+?)）$/);
+            if (match) {
+                roleName = match[1].trim();
+                roleDescription = match[2].trim();
+            } else {
+                // 括弧がない場合は、先頭の部分を役割名として使用
+                const parts = role.split(/[:：]/);
+                if (parts.length > 1) {
+                    roleName = parts[0].trim();
+                    roleDescription = parts.slice(1).join('：').trim();
+                } else {
+                    // それ以外の場合はそのまま役割名として使用
+                    roleName = role;
+                    roleDescription = '';
+                }
+            }
+            
+            // 役割の追加
+            addRoleInput({
+                name: roleName,
+                description: roleDescription
+            });
         });
         
         updateRemoveButtons();

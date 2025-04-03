@@ -1135,7 +1135,7 @@ def generate_next_turn_endpoint():
         # リクエストデータの取得
         data = request.json
         topic = data.get('topic', '')
-        roles = data.get('roles', [])
+        roles_data = data.get('roles', [])  # これは辞書の配列または文字列の配列
         language = data.get('language', 'ja')
         current_discussion = data.get('discussion', [])
         current_turn = int(data.get('currentTurn', 0))
@@ -1148,7 +1148,7 @@ def generate_next_turn_endpoint():
         temperature = float(data.get('temperature', 0.7))
         max_output_tokens = int(data.get('maxOutputTokens', 1024))
         
-        logger.info(f"Request parameters: topic={topic}, roles_count={len(roles)}, use_document={use_document}")
+        logger.info(f"Request parameters: topic={topic}, roles_count={len(roles_data)}, use_document={use_document}")
         logger.info(f"Model settings: model={model}, temperature={temperature}, max_output_tokens={max_output_tokens}")
         
         # 入力検証
@@ -1156,8 +1156,8 @@ def generate_next_turn_endpoint():
             logger.warning("Empty topic provided")
             return jsonify({'error': '議題を入力してください'}), 400
             
-        if not roles or len(roles) < 2:
-            logger.warning(f"Insufficient roles: {len(roles)}")
+        if not roles_data or len(roles_data) < 2:
+            logger.warning(f"Insufficient roles: {len(roles_data)}")
             return jsonify({'error': '少なくとも2つの役割が必要です'}), 400
             
         # 環境変数からAPIキーを取得
@@ -1254,7 +1254,7 @@ def generate_next_turn_endpoint():
         result = generate_next_turn(
             api_key=api_key,
             topic=enhanced_topic,
-            roles=roles,
+            roles=roles_data,
             current_discussion=current_discussion,
             current_turn=current_turn,
             current_role_index=current_role_index,
@@ -1266,7 +1266,7 @@ def generate_next_turn_endpoint():
         )
         
         # 最終ターンかどうかを確認
-        total_roles = len(roles)
+        total_roles = len(roles_data)
         total_iterations = total_roles * num_turns
         current_iteration = (current_turn * total_roles) + current_role_index + 1
         is_complete = current_iteration >= total_iterations

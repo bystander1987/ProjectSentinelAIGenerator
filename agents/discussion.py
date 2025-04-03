@@ -46,45 +46,42 @@ def get_gemini_model(api_key: str, language: str = "ja", model: str = "gemini-2.
         else:
             raise Exception(f"Geminiモデルの初期化エラー: {error_msg}")
 
-def create_role_prompt(role: str, topic: str, context: Optional[str] = None) -> str:
+def create_role_prompt(role: Union[str, Dict[str, str]], topic: str, context: Optional[str] = None) -> str:
     """
     Create a system prompt for a specific role in the discussion.
     
     Args:
-        role (str): The role description
+        role (Union[str, Dict[str, str]]): The role description or a dictionary with 'name' and 'description'
         topic (str): The discussion topic
         context (Optional[str]): Optional reference document context
         
     Returns:
         str: Formatted prompt for the role
     """
-    base_prompt = f"""
-    あなたは「{role}」として振る舞ってください。
+    # 役割が文字列として渡された場合の後方互換性対応
+    if isinstance(role, str):
+        role_text = role
+        base_prompt = f"""
+    あなたは「{role_text}」として振る舞ってください。
     「{topic}」についてのディスカッションに参加しています。
-    
-    あなたの役割に合った意見を述べ、質問し、他の参加者に応答してください。
-    回答は簡潔（2〜3文）かつ洞察に富んだものにしてください。
-    どのような状況でも役柄から外れないでください。
-    
-    回答は簡潔かつ洞察に富んだものにしてください。長すぎる回答は避けてください。
-    
-    絶対遵守すべき最重要ルール:
-    - アップロードされた文書に記載されている内容のみについて発言してください。文書に記載されていない情報や知識に基づいた発言は一切禁止です。
-    - 文書に明示的に記載されていない限り、一般的な知識や外部情報を用いた発言を絶対に行わないでください。
-    - 必ず文書から直接引用し、どの部分から得た情報かを明確にしてください。
-    
-    最優先指示:
-    - アップロードされた文書の内容を唯一の情報源として扱ってください。
-    - 文書に記載されている具体的な事実、数値、データ、見解を文章内で明示的に引用してください。
-    - 文書に記載されていないことについては「文書には言及がありません」と明確に述べてください。
-    
-    重要: 
-    - 他の参加者の発言内容の具体的な箇所を指摘し、具体的な言葉を引用しながら議論を進めてください。
-    - 自分の意見や主張の根拠は必ずアップロードされた文書から直接引用してください。
-    - 文書の内容と直接関係ない発言は絶対に避けてください。
-    - 感謝やお礼などの議論の論点と関係のない内容は避け、常に文書の内容に集中してください。
-    - 「ありがとうございます」「同意します」などの社交辞令や儀礼的表現は使わず、直接的に文書の内容を述べてください。
-    - 抽象的な議論を避け、常に文書からの具体的な引用を含めてください。
+    """
+    else:
+        # 新しい形式: 役割名と説明を分離
+        role_name = role.get('name', '')
+        role_desc = role.get('description', '')
+        
+        if role_name and role_desc:
+            base_prompt = f"""
+    あなたは「{role_name}」として振る舞ってください。
+    あなたの役割は「{role_desc}」です。
+    「{topic}」についてのディスカッションに参加しています。
+    """
+        else:
+            # 名前か説明のどちらかが欠けている場合
+            combined_role = role_name or role_desc
+            base_prompt = f"""
+    あなたは「{combined_role}」として振る舞ってください。
+    「{topic}」についてのディスカッションに参加しています。
     """
     
     # 参考文書がある場合は追加
