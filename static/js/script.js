@@ -1316,33 +1316,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 rolesContainer.removeChild(rolesContainer.firstChild);
             }
             
-            // 最初の役割入力フィールドを2つ追加（デフォルト状態）
-            addRoleInput();
-            addRoleInput();
-            
-            // 現在のフォーム内の役割入力フィールドを取得（リセット後）
-            let roleInputs = document.querySelectorAll('.role-input');
-            let currentIndex = 0;
-            
-            // 役割を入力フィールドに設定
+            // すべての役割入力フィールドを削除したので、JSONファイルから役割を追加
             for (let i = 0; i < roles.length; i++) {
                 const roleName = roles[i].name || '';
                 const roleDesc = roles[i].description || '';
                 
-                // 役割名と説明を組み合わせた表示用テキスト
-                const roleText = roleDesc ? `${roleName}: ${roleDesc}` : roleName;
-                
-                if (currentIndex < roleInputs.length) {
-                    // 既存の入力フィールドを使用
-                    roleInputs[currentIndex].value = roleText;
-                    currentIndex++;
-                } else {
-                    // 新しい入力フィールドを追加（オブジェクト形式で渡す）
-                    addRoleInput({
-                        name: roleName,
-                        description: roleDesc
-                    });
-                }
+                // 新しい入力フィールドを追加（オブジェクト形式で渡す）
+                addRoleInput({
+                    name: roleName,
+                    description: roleDesc
+                });
             }
             
             // 成功メッセージを表示
