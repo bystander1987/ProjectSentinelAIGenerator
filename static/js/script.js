@@ -689,23 +689,21 @@ document.addEventListener('DOMContentLoaded', function() {
         // ファイルの種類に基づいて処理を分岐
         const fileExt = file.name.split('.').pop().toLowerCase();
         
-        const reader = new FileReader();
-        
-        // UTF-8エンコーディングでの読み込み
-        reader.onload = function(event) {
+        // 処理関数の定義（エンコーディング試行用）
+        const processFile = function(content) {
             try {
                 let result;
                 
                 // ファイル形式に応じた処理
                 if (fileExt === 'json') {
                     // JSONファイルの処理
-                    result = parseRolesJson(event.target.result);
+                    result = parseRolesJson(content);
                 } else if (fileExt === 'csv') {
                     // CSVファイルの処理
-                    result = parseRolesCsv(event.target.result);
+                    result = parseRolesCsv(content);
                 } else if (fileExt === 'txt') {
                     // テキストファイルの処理
-                    result = parseRolesTxt(event.target.result);
+                    result = parseRolesTxt(content);
                 } else {
                     throw new Error(`サポートされていないファイル形式です: ${fileExt}`);
                 }
@@ -720,23 +718,93 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // インポートボタンを有効化
                 importRolesBtn.disabled = false;
+                
+                // 処理成功
+                return true;
             } catch (error) {
-                // エラー処理
-                rolesPreviewContainer.innerHTML = '<p class="text-muted text-center my-2">プレビューを表示できません</p>';
-                rolesUploadErrorMessage.textContent = error.message;
-                rolesUploadError.classList.remove('d-none');
-                console.error('Error parsing roles file:', error);
+                console.error('Error processing file with current encoding:', error);
+                return false;
             }
         };
         
-        reader.onerror = function() {
+        // まずバイナリとして読み込み、エンコーディングを判断
+        const binaryReader = new FileReader();
+        binaryReader.onload = function(event) {
+            const content = new Uint8Array(event.target.result);
+            
+            // エンコーディングの検出を試みる
+            let encoding = 'utf-8'; // デフォルト
+            
+            // BOMの検出
+            if (content.length >= 3 && content[0] === 0xEF && content[1] === 0xBB && content[2] === 0xBF) {
+                encoding = 'utf-8'; // UTF-8 with BOM
+            } 
+            // Shift-JISの特徴的なバイトパターンを検出
+            else if (content.some(byte => (byte >= 0x81 && byte <= 0x9F) || (byte >= 0xE0 && byte <= 0xEF))) {
+                encoding = 'shift-jis';
+            }
+            
+            console.log(`Detected encoding: ${encoding}`);
+            
+            // テキストとして再読み込み
+            const textReader = new FileReader();
+            textReader.onload = function(e) {
+                let success = processFile(e.target.result);
+                
+                // UTF-8で失敗した場合、Shift-JISで再試行
+                if (!success && encoding === 'utf-8') {
+                    console.log("Retrying with Shift-JIS encoding");
+                    const sjisReader = new FileReader();
+                    sjisReader.onload = function(e2) {
+                        success = processFile(e2.target.result);
+                        
+                        // それでも失敗した場合
+                        if (!success) {
+                            // エラー処理
+                            rolesPreviewContainer.innerHTML = '<p class="text-muted text-center my-2">プレビューを表示できません</p>';
+                            rolesUploadErrorMessage.textContent = 'ファイルの解析に失敗しました。ファイル形式とエンコーディングを確認してください。';
+                            rolesUploadError.classList.remove('d-none');
+                        }
+                    };
+                    sjisReader.onerror = handleFileReadError;
+                    sjisReader.readAsText(file, 'shift-jis');
+                }
+                // 最初からShift-JISで失敗した場合、EUC-JPで再試行
+                else if (!success && encoding === 'shift-jis') {
+                    console.log("Retrying with EUC-JP encoding");
+                    const eucReader = new FileReader();
+                    eucReader.onload = function(e2) {
+                        success = processFile(e2.target.result);
+                        
+                        // それでも失敗した場合
+                        if (!success) {
+                            // エラー処理
+                            rolesPreviewContainer.innerHTML = '<p class="text-muted text-center my-2">プレビューを表示できません</p>';
+                            rolesUploadErrorMessage.textContent = 'ファイルの解析に失敗しました。ファイル形式とエンコーディングを確認してください。';
+                            rolesUploadError.classList.remove('d-none');
+                        }
+                    };
+                    eucReader.onerror = handleFileReadError;
+                    eucReader.readAsText(file, 'euc-jp');
+                }
+            };
+            textReader.onerror = handleFileReadError;
+            textReader.readAsText(file, encoding);
+        };
+        
+        // エラーハンドラ
+        const handleFileReadError = function(error) {
             rolesPreviewContainer.innerHTML = '<p class="text-muted text-center my-2">ファイルの読み込みに失敗しました</p>';
             rolesUploadErrorMessage.textContent = 'ファイルの読み込み中にエラーが発生しました。';
             rolesUploadError.classList.remove('d-none');
+            console.error('Error reading file:', error);
         };
         
-        // ファイルをテキストとして読み込む
-        reader.readAsText(file);
+        binaryReader.onerror = handleFileReadError;
+        
+        // まずバイナリとして読み込む
+        binaryReader.readAsArrayBuffer(file);
+
     }
     
     // JSON形式の役割ファイルをパースする
