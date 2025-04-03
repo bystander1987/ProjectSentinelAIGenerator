@@ -1310,19 +1310,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 topicInput.value = topic;
             }
             
-            // 既存の役割をクリアする（デフォルト動作）
-            // 最初の2つの役割入力フィールドを残し、それ以外を削除
-            const roleInputGroups = document.querySelectorAll('.role-input-group');
-            for (let i = 2; i < roleInputGroups.length; i++) {
-                roleInputGroups[i].remove();
+            // すべての役割入力フィールドを削除
+            const rolesContainer = document.getElementById('rolesContainer');
+            while (rolesContainer.firstChild) {
+                rolesContainer.removeChild(rolesContainer.firstChild);
             }
             
-            // 残った2つの入力フィールドもクリア
-            document.querySelectorAll('.role-input').forEach(input => {
-                input.value = '';
-            });
+            // 最初の役割入力フィールドを2つ追加（デフォルト状態）
+            addRoleInput();
+            addRoleInput();
             
-            // 現在のフォーム内の役割入力フィールドを取得（クリア後）
+            // 現在のフォーム内の役割入力フィールドを取得（リセット後）
             let roleInputs = document.querySelectorAll('.role-input');
             let currentIndex = 0;
             
