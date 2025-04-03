@@ -741,44 +741,155 @@ document.addEventListener('DOMContentLoaded', function() {
     // JSON形式の役割ファイルをパースする
     function parseRolesJson(content) {
         const data = JSON.parse(content);
+        const includesTopic = document.getElementById('includesTopicSwitch').checked;
+        let roles = [];
+        let topic = null;
         
-        // 配列であることを確認
-        if (Array.isArray(data)) {
-            return data.map(role => String(role)).filter(role => role.trim() !== '');
+        if (includesTopic && data.topic && Array.isArray(data.roles)) {
+            // テーマと役割が含まれる形式: {"topic": "テーマ", "roles": [{name, description}, ...]}
+            topic = data.topic;
+            roles = data.roles.map(role => ({
+                name: role.name || '',
+                description: role.description || ''
+            }));
+        } else if (Array.isArray(data)) {
+            // 役割のみの配列: [{name, description}, ...]
+            roles = data.map(role => ({
+                name: role.name || '',
+                description: role.description || ''
+            }));
         } else if (typeof data === 'object') {
-            // オブジェクトの場合は値を抽出
-            return Object.values(data).map(role => String(role)).filter(role => role.trim() !== '');
+            // その他のオブジェクト形式
+            throw new Error('サポートされていないJSON形式です。説明に記載された形式に従ってください。');
         } else {
-            throw new Error('無効なJSON形式です。役割の配列が必要です。');
+            throw new Error('無効なJSON形式です。説明に記載された形式に従ってください。');
         }
+        
+        // 空の役割名や説明がある場合は除外
+        roles = roles.filter(role => role.name.trim() !== '');
+        
+        return { roles, topic };
     }
     
     // CSV形式の役割ファイルをパースする
     function parseRolesCsv(content) {
-        // 単純なCSV解析（カンマ区切り）
-        return content.split(/\r?\n/)
+        const includesTopic = document.getElementById('includesTopicSwitch').checked;
+        const lines = content.split(/\r?\n/)
             .map(line => line.trim())
-            .filter(line => line !== '')
-            .map(line => {
-                // カンマで区切られた最初の列を役割として使用
-                const columns = line.split(',');
-                return columns[0].trim();
-            })
-            .filter(role => role !== '');
+            .filter(line => line !== '');
+            
+        let roles = [];
+        let topic = null;
+        
+        if (lines.length === 0) {
+            throw new Error('CSVファイルが空です。');
+        }
+        
+        if (includesTopic) {
+            // 1行目をテーマとして解析
+            const topicLine = lines[0].split(',');
+            if (topicLine.length >= 2) {
+                topic = topicLine[1].trim();
+            } else {
+                topic = topicLine[0].trim();
+            }
+            
+            // 残りの行を役割として解析
+            for (let i = 1; i < lines.length; i++) {
+                const columns = lines[i].split(',');
+                if (columns.length >= 2) {
+                    roles.push({
+                        name: columns[0].trim(),
+                        description: columns[1].trim()
+                    });
+                }
+            }
+        } else {
+            // すべての行を役割として解析
+            for (let i = 0; i < lines.length; i++) {
+                const columns = lines[i].split(',');
+                if (columns.length >= 2) {
+                    roles.push({
+                        name: columns[0].trim(),
+                        description: columns[1].trim()
+                    });
+                }
+            }
+        }
+        
+        // 空の役割名がある場合は除外
+        roles = roles.filter(role => role.name !== '');
+        
+        return { roles, topic };
     }
     
     // テキスト形式の役割ファイルをパースする
     function parseRolesTxt(content) {
-        // 行ごとに分割して空行を除去
-        return content.split(/\r?\n/)
+        const includesTopic = document.getElementById('includesTopicSwitch').checked;
+        const lines = content.split(/\r?\n/)
             .map(line => line.trim())
             .filter(line => line !== '');
+            
+        let roles = [];
+        let topic = null;
+        
+        if (lines.length === 0) {
+            throw new Error('テキストファイルが空です。');
+        }
+        
+        if (includesTopic) {
+            // 1行目をテーマとして解析
+            const topicParts = lines[0].split(':');
+            if (topicParts.length >= 2) {
+                topic = topicParts[1].trim();
+            } else {
+                topic = topicParts[0].trim();
+            }
+            
+            // 残りの行を役割として解析
+            for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split(':');
+                if (parts.length >= 2) {
+                    roles.push({
+                        name: parts[0].trim(),
+                        description: parts[1].trim()
+                    });
+                }
+            }
+        } else {
+            // すべての行を役割として解析
+            for (let i = 0; i < lines.length; i++) {
+                const parts = lines[i].split(':');
+                if (parts.length >= 2) {
+                    roles.push({
+                        name: parts[0].trim(),
+                        description: parts[1].trim()
+                    });
+                }
+            }
+        }
+        
+        // 空の役割名がある場合は除外
+        roles = roles.filter(role => role.name !== '');
+        
+        return { roles, topic };
     }
     
     // 役割のプレビューを表示
-    function displayRolesPreview(roles) {
+    function displayRolesPreview(result) {
         // プレビューコンテナをクリア
         rolesPreviewContainer.innerHTML = '';
+        
+        const roles = result.roles;
+        const topic = result.topic;
+        
+        // テーマが存在する場合は表示
+        if (topic) {
+            const topicHeader = document.createElement('div');
+            topicHeader.className = 'alert alert-info mb-2 py-2';
+            topicHeader.innerHTML = `<strong>テーマ:</strong> ${escapeHtml(topic)}`;
+            rolesPreviewContainer.appendChild(topicHeader);
+        }
         
         // 役割のリストを表示
         const list = document.createElement('ul');
@@ -787,7 +898,12 @@ document.addEventListener('DOMContentLoaded', function() {
         roles.forEach((role, index) => {
             const item = document.createElement('li');
             item.className = 'list-group-item bg-transparent';
-            item.innerHTML = `<small>${index + 1}.</small> ${escapeHtml(role)}`;
+            item.innerHTML = `<small>${index + 1}.</small> <strong>${escapeHtml(role.name)}</strong>: ${escapeHtml(role.description)}`;
+            
+            // データ属性に役割の詳細を保存
+            item.dataset.roleName = role.name;
+            item.dataset.roleDescription = role.description;
+            
             list.appendChild(item);
         });
         
@@ -803,16 +919,36 @@ document.addEventListener('DOMContentLoaded', function() {
     // 役割をフォームにインポート
     function importRoles() {
         try {
-            // プレビューから役割を取得
+            // プレビューから役割とテーマを取得
             const roleListItems = rolesPreviewContainer.querySelectorAll('li');
             const roles = Array.from(roleListItems).map(li => {
-                // <small>タグとその内容を除去して役割名だけを取得
-                return li.innerHTML.replace(/<small>.*?<\/small>\s*/, '');
-            });
+                // データ属性から役割情報を取得
+                return {
+                    name: li.dataset.roleName,
+                    description: li.dataset.roleDescription
+                };
+            }).filter(role => role.name && role.description);  // 有効な役割のみをフィルタリング
+            
+            // テーマの取得を試みる
+            const topicElement = rolesPreviewContainer.querySelector('.alert-info');
+            let topic = null;
+            if (topicElement) {
+                // "テーマ:" の後のテキストを抽出
+                const topicText = topicElement.innerText;
+                const match = topicText.match(/テーマ:\s*(.*)/);
+                if (match && match[1]) {
+                    topic = match[1].trim();
+                }
+            }
             
             // 役割が見つからない場合はエラー
             if (roles.length === 0) {
                 throw new Error('インポートする役割が見つかりません。');
+            }
+            
+            // テーマが見つかった場合は設定
+            if (topic) {
+                topicInput.value = topic;
             }
             
             // 既存の役割をクリアするかどうか
@@ -835,18 +971,23 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // 役割を入力フィールドに設定
             for (let i = 0; i < roles.length; i++) {
+                const roleText = `${roles[i].name}: ${roles[i].description}`;
                 if (currentIndex < roleInputs.length) {
                     // 既存の入力フィールドを使用
-                    roleInputs[currentIndex].value = roles[i];
+                    roleInputs[currentIndex].value = roleText;
                     currentIndex++;
                 } else {
                     // 新しい入力フィールドを追加
-                    addRoleInput(roles[i]);
+                    addRoleInput(roleText);
                 }
             }
             
             // 成功メッセージを表示
-            rolesUploadStatusMessage.textContent = `${roles.length}個の役割が正常にインポートされました。`;
+            let successMessage = `${roles.length}個の役割が正常にインポートされました。`;
+            if (topic) {
+                successMessage += ` テーマ「${topic}」も設定されました。`;
+            }
+            rolesUploadStatusMessage.textContent = successMessage;
             rolesUploadStatus.classList.remove('d-none');
             
             // モーダルを閉じる（少し遅延させて成功メッセージを見せる）

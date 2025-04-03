@@ -368,12 +368,32 @@
                         <div class="mb-3">
                             <label for="rolesFile" class="form-label">役割定義ファイル</label>
                             <input class="form-control" type="file" id="rolesFile" accept=".json,.csv,.txt">
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" id="includesTopicSwitch">
+                                <label class="form-check-label" for="includesTopicSwitch">ディスカッションテーマも含む</label>
+                                <div class="form-text">ファイル内にディスカッションテーマが含まれる場合にチェック</div>
+                            </div>
                             <div class="form-text">
                                 サポート形式:
                                 <ul>
-                                    <li>JSON形式: 役割の配列 ["役割1", "役割2", ...]</li>
-                                    <li>CSV形式: 1行に1つの役割</li>
-                                    <li>テキスト形式: 1行に1つの役割</li>
+                                    <li>JSON形式: 
+                                        <ul>
+                                            <li>テーマ含む: {"topic": "テーマ", "roles": [{"name": "役割名1", "description": "役割内容1"}, ...]}</li>
+                                            <li>役割のみ: [{"name": "役割名1", "description": "役割内容1"}, ...]</li>
+                                        </ul>
+                                    </li>
+                                    <li>CSV形式: 
+                                        <ul>
+                                            <li>テーマ含む: 1行目に "テーマ,テーマ内容" その後の行に "役割名,役割内容"</li>
+                                            <li>役割のみ: 各行に "役割名,役割内容"</li>
+                                        </ul>
+                                    </li>
+                                    <li>テキスト形式: 
+                                        <ul>
+                                            <li>テーマ含む: 1行目に "テーマ:テーマ内容" その後の行に "役割名:役割内容"</li>
+                                            <li>役割のみ: 各行に "役割名:役割内容"</li>
+                                        </ul>
+                                    </li>
                                 </ul>
                             </div>
                         </div>
