@@ -792,11 +792,16 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 throw new Error('無効なJSON形式です。説明に記載された形式に従ってください。');
             }
-        
-        // 空の役割名や説明がある場合は除外
-        roles = roles.filter(role => role.name.trim() !== '');
-        
-        return { roles, topic };
+            
+            // 空の役割名や説明がある場合は除外
+            roles = roles.filter(role => role.name.trim() !== '');
+            
+            return { roles, topic };
+        } catch (error) {
+            // すべてのエラーをこのレベルで捕捉
+            console.error("Error in parseRolesJson:", error);
+            throw error; // エラーを呼び出し元に再スロー
+        }
     }
     
     // CSV形式の役割ファイルをパースする
