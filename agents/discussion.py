@@ -7,14 +7,14 @@ from langchain_community.vectorstores import FAISS
 
 logger = logging.getLogger(__name__)
 
-def get_gemini_model(api_key: str, language: str = "ja", model: str = "gemini-1.5-flash", temperature: float = 0.7, max_output_tokens: int = 1024):
+def get_gemini_model(api_key: str, language: str = "ja", model: str = "gemini-2.0-flash-lite", temperature: float = 0.7, max_output_tokens: int = 1024):
     """
     Initialize and return a Gemini model instance.
     
     Args:
         api_key (str): Google Gemini API key
         language (str): Output language (default: "ja")
-        model (str): Gemini model name to use (default: "gemini-1.5-flash")
+        model (str): Gemini model name to use (default: "gemini-2.0-flash-lite")
         temperature (float): Temperature parameter for generation (0.0-1.0) (default: 0.7)
         max_output_tokens (int): Maximum number of tokens to generate (default: 1024)
         
@@ -373,7 +373,7 @@ def provide_discussion_guidance(
     instruction: str,
     language: str = "ja",
     vector_store: Optional[FAISS] = None,
-    model: str = "gemini-1.5-flash",
+    model: str = "gemini-2.0-flash-lite",
     temperature: float = 0.7,
     max_output_tokens: int = 1024
 ) -> Dict[str, str]:
@@ -478,7 +478,7 @@ def continue_discussion(
     num_additional_turns: int = 1,
     language: str = "ja",
     vector_store: Optional[FAISS] = None,
-    model: str = "gemini-1.5-flash",
+    model: str = "gemini-2.0-flash-lite",
     temperature: float = 0.7,
     max_output_tokens: int = 1024
 ) -> List[Dict[str, str]]:
@@ -578,7 +578,7 @@ def generate_next_turn(
     current_role_index: int,
     language: str = "ja",
     vector_store: Optional[FAISS] = None,
-    model: str = "gemini-1.5-flash",
+    model: str = "gemini-2.0-flash-lite",
     temperature: float = 0.7,
     max_output_tokens: int = 1024
 ) -> Dict[str, Any]:
@@ -664,7 +664,7 @@ def analyze_document_for_role(
         str: 分析結果
     """
     try:
-        llm = get_gemini_model(api_key, language, model="gemini-1.5-flash", temperature=0.7, max_output_tokens=1024)
+        llm = get_gemini_model(api_key, language, model="gemini-2.0-flash-lite", temperature=0.7, max_output_tokens=1024)
         
         # 文書全体の内容を取得
         from agents.document_processor import search_documents, create_context_from_documents
@@ -763,7 +763,7 @@ def generate_consultant_analysis(
         str: コンサルタントによる論点分析
     """
     try:
-        llm = get_gemini_model(api_key, language, model="gemini-1.5-flash", temperature=0.7, max_output_tokens=1024)
+        llm = get_gemini_model(api_key, language, model="gemini-2.0-flash-lite", temperature=0.7, max_output_tokens=1024)
         
         # 文書からの情報抽出
         document_context = ""
@@ -890,7 +890,7 @@ def generate_discussion(
     num_turns: int = 3,
     language: str = "ja",
     vector_store: Optional[FAISS] = None,
-    model: str = "gemini-1.5-flash",
+    model: str = "gemini-2.0-flash-lite",
     temperature: float = 0.7,
     max_output_tokens: int = 1024
 ) -> List[Dict[str, str]]:

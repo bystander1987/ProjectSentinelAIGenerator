@@ -421,7 +421,7 @@ def create_discussion_with_document():
         language = data.get('language', 'ja')
         
         # モデル設定の取得
-        model = data.get('model', 'gemini-1.5-flash')
+        model = data.get('model', 'gemini-2.0-flash-lite')
         temperature = float(data.get('temperature', 0.7))
         max_output_tokens = int(data.get('maxOutputTokens', 1024))
         
@@ -771,7 +771,7 @@ def summarize_discussion_endpoint():
         
         # モデル設定の取得
         settings = data.get('settings', {})
-        model = settings.get('model', 'gemini-1.5-flash')
+        model = settings.get('model', 'gemini-2.0-flash-lite')
         temperature = float(settings.get('temperature', 0.7))
         max_output_tokens = int(settings.get('maxOutputTokens', 1024))
         
@@ -906,7 +906,7 @@ def provide_guidance_endpoint():
         
         # モデル設定の取得
         settings = data.get('settings', {})
-        model = settings.get('model', 'gemini-1.5-flash')
+        model = settings.get('model', 'gemini-2.0-flash-lite')
         temperature = float(settings.get('temperature', 0.7))
         max_output_tokens = int(settings.get('maxOutputTokens', 1024))
         
@@ -938,7 +938,7 @@ def provide_guidance_endpoint():
         logger.info(f"Additional turns: {num_additional_turns}")
         
         # モデル設定の取得
-        model = data.get('model', 'gemini-1.5-flash')
+        model = data.get('model', 'gemini-2.0-flash-lite')
         temperature = float(data.get('temperature', 0.7))
         max_output_tokens = int(data.get('maxOutputTokens', 1024))
         
@@ -1075,7 +1075,7 @@ def generate_next_turn_endpoint():
         use_document = data.get('use_document', False)  # 文書を使用するかどうかのフラグ
         
         # モデル設定パラメータの取得
-        model = data.get('model', 'gemini-1.5-flash')
+        model = data.get('model', 'gemini-2.0-flash-lite')
         temperature = float(data.get('temperature', 0.7))
         max_output_tokens = int(data.get('maxOutputTokens', 1024))
         
@@ -1239,7 +1239,7 @@ def continue_discussion_endpoint():
         current_role_index = int(data.get('current_role_index', 0))
         
         # モデル設定パラメータの取得
-        model = data.get('model', 'gemini-1.5-flash')
+        model = data.get('model', 'gemini-2.0-flash-lite')
         temperature = float(data.get('temperature', 0.7))
         max_output_tokens = int(data.get('maxOutputTokens', 1024))
         

@@ -2191,7 +2191,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 設定の初期値
     const defaultSettings = {
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.0-flash-lite',
         temperature: 0.7,
         maxOutputTokens: 1024,
         saveSettings: true
