@@ -691,31 +691,32 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const reader = new FileReader();
         
+        // UTF-8エンコーディングでの読み込み
         reader.onload = function(event) {
             try {
-                let roles = [];
+                let result;
                 
                 // ファイル形式に応じた処理
                 if (fileExt === 'json') {
                     // JSONファイルの処理
-                    roles = parseRolesJson(event.target.result);
+                    result = parseRolesJson(event.target.result);
                 } else if (fileExt === 'csv') {
                     // CSVファイルの処理
-                    roles = parseRolesCsv(event.target.result);
+                    result = parseRolesCsv(event.target.result);
                 } else if (fileExt === 'txt') {
                     // テキストファイルの処理
-                    roles = parseRolesTxt(event.target.result);
+                    result = parseRolesTxt(event.target.result);
                 } else {
                     throw new Error(`サポートされていないファイル形式です: ${fileExt}`);
                 }
                 
                 // 少なくとも1つ以上の役割があることを確認
-                if (roles.length === 0) {
+                if (result.roles.length === 0) {
                     throw new Error('有効な役割が見つかりませんでした。ファイル形式を確認してください。');
                 }
                 
                 // 役割のプレビューを表示
-                displayRolesPreview(roles);
+                displayRolesPreview(result);
                 
                 // インポートボタンを有効化
                 importRolesBtn.disabled = false;
@@ -740,30 +741,57 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // JSON形式の役割ファイルをパースする
     function parseRolesJson(content) {
-        const data = JSON.parse(content);
-        const includesTopic = document.getElementById('includesTopicSwitch').checked;
-        let roles = [];
-        let topic = null;
-        
-        if (includesTopic && data.topic && Array.isArray(data.roles)) {
-            // テーマと役割が含まれる形式: {"topic": "テーマ", "roles": [{name, description}, ...]}
-            topic = data.topic;
-            roles = data.roles.map(role => ({
-                name: role.name || '',
-                description: role.description || ''
-            }));
-        } else if (Array.isArray(data)) {
-            // 役割のみの配列: [{name, description}, ...]
-            roles = data.map(role => ({
-                name: role.name || '',
-                description: role.description || ''
-            }));
-        } else if (typeof data === 'object') {
-            // その他のオブジェクト形式
-            throw new Error('サポートされていないJSON形式です。説明に記載された形式に従ってください。');
-        } else {
-            throw new Error('無効なJSON形式です。説明に記載された形式に従ってください。');
-        }
+        try {
+            // エンコーディングの問題を検出して修正を試みる
+            // BOMを削除
+            const contentWithoutBOM = content.replace(/^\uFEFF/, '');
+            
+            // JSONパースを試みる
+            let data;
+            try {
+                data = JSON.parse(contentWithoutBOM);
+            } catch (e) {
+                // 日本語文字が原因でJSONパースに失敗した可能性がある場合の対応
+                console.error("Initial JSON parse failed:", e);
+                
+                // エスケープシーケンスを修正する可能性のある前処理
+                const preprocessed = contentWithoutBOM
+                    .replace(/\\\\/g, '\\')  // 二重バックスラッシュを修正
+                    .replace(/\\"/g, '"')    // エスケープされた引用符を修正
+                    .replace(/"/g, '"')      // 異なる引用符を標準化
+                    .replace(/"/g, '"');     // 異なる引用符を標準化
+                
+                try {
+                    data = JSON.parse(preprocessed);
+                } catch (e2) {
+                    console.error("Secondary JSON parse attempt failed:", e2);
+                    throw new Error('JSONの解析に失敗しました。ファイルが有効なJSON形式であることを確認してください。');
+                }
+            }
+            
+            const includesTopic = document.getElementById('includesTopicSwitch').checked;
+            let roles = [];
+            let topic = null;
+            
+            if (includesTopic && data.topic && Array.isArray(data.roles)) {
+                // テーマと役割が含まれる形式: {"topic": "テーマ", "roles": [{name, description}, ...]}
+                topic = data.topic;
+                roles = data.roles.map(role => ({
+                    name: role.name || '',
+                    description: role.description || ''
+                }));
+            } else if (Array.isArray(data)) {
+                // 役割のみの配列: [{name, description}, ...]
+                roles = data.map(role => ({
+                    name: role.name || '',
+                    description: role.description || ''
+                }));
+            } else if (typeof data === 'object') {
+                // その他のオブジェクト形式
+                throw new Error('サポートされていないJSON形式です。説明に記載された形式に従ってください。');
+            } else {
+                throw new Error('無効なJSON形式です。説明に記載された形式に従ってください。');
+            }
         
         // 空の役割名や説明がある場合は除外
         roles = roles.filter(role => role.name.trim() !== '');
@@ -2437,6 +2465,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // HTML特殊文字をエスケープする関数
     function escapeHtml(text) {
+        if (text === undefined || text === null) return '';
+        text = String(text);
         const map = {
             '&': '&amp;',
             '<': '&lt;',
