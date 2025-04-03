@@ -686,8 +686,82 @@ document.addEventListener('DOMContentLoaded', function() {
         rolesUploadStatus.classList.add('d-none');
         rolesUploadError.classList.add('d-none');
         
-        // ファイルの種類に基づいて処理を分岐
+        // JSONファイルの場合は、サーバー側の処理を使用
         const fileExt = file.name.split('.').pop().toLowerCase();
+        if (fileExt === 'json') {
+            // FormDataの作成
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // サーバーにファイルをアップロード
+            fetch('/process-json-file', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`サーバーエラー: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(result => {
+                console.log("Server processed JSON:", result);
+                
+                if (result.success) {
+                    // 成功した場合、データを処理
+                    const data = result.data;
+                    const includesTopic = document.getElementById('includesTopicSwitch').checked;
+                    let roles = [];
+                    let topic = null;
+                    
+                    if (includesTopic && data.topic && Array.isArray(data.roles)) {
+                        // テーマと役割が含まれる形式: {"topic": "テーマ", "roles": [{name, description}, ...]}
+                        topic = data.topic;
+                        roles = data.roles.map(role => ({
+                            name: role.name || '',
+                            description: role.description || ''
+                        }));
+                    } else if (Array.isArray(data)) {
+                        // 役割のみの配列: [{name, description}, ...]
+                        roles = data.map(role => ({
+                            name: role.name || '',
+                            description: role.description || ''
+                        }));
+                    } else if (typeof data === 'object') {
+                        // その他のオブジェクト形式
+                        throw new Error('サポートされていないJSON形式です。説明に記載された形式に従ってください。');
+                    } else {
+                        throw new Error('無効なJSON形式です。説明に記載された形式に従ってください。');
+                    }
+                    
+                    // 空の役割名や説明がある場合は除外
+                    roles = roles.filter(role => role.name.trim() !== '');
+                    
+                    if (roles.length === 0) {
+                        throw new Error('有効な役割が見つかりませんでした。ファイル形式を確認してください。');
+                    }
+                    
+                    // 役割のプレビューを表示
+                    displayRolesPreview({ roles, topic });
+                    
+                    // インポートボタンを有効化
+                    importRolesBtn.disabled = false;
+                } else {
+                    // エラーの場合
+                    throw new Error(result.error || 'ファイルの処理に失敗しました。');
+                }
+            })
+            .catch(error => {
+                // エラー処理
+                rolesPreviewContainer.innerHTML = '<p class="text-muted text-center my-2">プレビューを表示できません</p>';
+                rolesUploadErrorMessage.textContent = error.message;
+                rolesUploadError.classList.remove('d-none');
+                console.error('Error processing JSON file:', error);
+            });
+            return;
+        }
+        
+        // ファイルの種類に基づいて処理を分岐（JSON以外）
         
         // 処理関数の定義（エンコーディング試行用）
         const processFile = function(content) {

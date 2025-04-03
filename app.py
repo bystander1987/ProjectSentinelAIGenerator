@@ -6,6 +6,7 @@ import json
 import pickle
 import hashlib
 import uuid
+import codecs
 from flask import Flask, render_template, request, jsonify, session, url_for
 from agents.discussion import (
     generate_discussion, get_gemini_model, summarize_discussion,
@@ -59,6 +60,74 @@ def load_large_session_data(file_type: str) -> dict:
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
+
+@app.route('/process-json-file', methods=['POST'])
+def process_json_file():
+    """サーバー側でJSONファイルを処理する"""
+    import os
+    import json
+    import codecs
+    
+    if 'file' not in request.files:
+        return jsonify({'error': 'ファイルが選択されていません。'}), 400
+            
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'error': 'ファイルが選択されていません。'}), 400
+    
+    # 拡張子の確認
+    filename = file.filename
+    file_ext = os.path.splitext(filename)[1].lower()
+    
+    if file_ext != '.json':
+        return jsonify({'error': 'JSONファイル（.json）のみサポートしています。'}), 400
+    
+    # 複数のエンコーディングを試す
+    content = None
+    result = {'success': False, 'error': 'すべてのエンコーディングでの読み込みに失敗しました。'}
+    
+    # 一時ファイルとして保存
+    temp_path = os.path.join('/tmp', 'uploaded_json.json')
+    file.save(temp_path)
+    
+    # 複数のエンコーディングで試行
+    encodings = ['utf-8', 'shift-jis', 'euc-jp', 'cp932']
+    
+    for encoding in encodings:
+        try:
+            with codecs.open(temp_path, 'r', encoding=encoding) as f:
+                content = f.read()
+                
+            # JSONとして解析を試みる
+            data = json.loads(content)
+            
+            # 成功した場合
+            result = {
+                'success': True,
+                'encoding': encoding,
+                'data': data
+            }
+            
+            # 一つでも成功したら終了
+            break
+            
+        except UnicodeDecodeError:
+            # このエンコーディングでは読めなかった
+            continue
+        except json.JSONDecodeError as e:
+            # エンコーディングは正しいがJSONパース失敗
+            result = {
+                'success': False,
+                'error': f'JSONパースエラー: {str(e)}',
+                'encoding': encoding
+            }
+    
+    # 一時ファイルを削除
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
+        
+    return jsonify(result)
 
 @app.route('/')
 def index():
