@@ -483,9 +483,35 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function addRoleInput(roleData = { name: '', description: '' }) {
-        // 役割名と説明を分離して処理
-        const roleName = typeof roleData === 'string' ? roleData : roleData.name || '';
-        const roleDescription = typeof roleData === 'string' ? '' : roleData.description || '';
+        let roleName = '';
+        let roleDescription = '';
+        
+        // 文字列または役割オブジェクトを処理
+        if (typeof roleData === 'string') {
+            // 文字列の場合は、役割名と説明を抽出を試みる
+            
+            // 括弧による分割を試行: "役割名（説明）"
+            const bracketMatch = roleData.match(/^(.+?)（(.+?)）$/);
+            if (bracketMatch) {
+                roleName = bracketMatch[1].trim();
+                roleDescription = bracketMatch[2].trim();
+            } else {
+                // コロンによる分割を試行: "役割名: 説明"
+                const colonParts = roleData.split(/[:：]/, 2);
+                if (colonParts.length > 1) {
+                    roleName = colonParts[0].trim();
+                    roleDescription = colonParts[1].trim();
+                } else {
+                    // 分割できない場合は役割名のみとして扱う
+                    roleName = roleData.trim();
+                    roleDescription = '';
+                }
+            }
+        } else {
+            // オブジェクトの場合
+            roleName = roleData.name || '';
+            roleDescription = roleData.description || '';
+        }
         
         // 既存の役割数をチェック（名前入力フィールドでカウント）
         const roleNameInputs = document.querySelectorAll('.role-name-input');
@@ -766,7 +792,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             description: role.description || ''
                         }));
                     } else if (Array.isArray(data)) {
-                        // 役割のみの配列: [{name, description}, ...]
+                        // 役割のみの配列: [{name, description}, ...] または ["役割名（説明）", ...]
                         roles = data.map(role => ({
                             name: role.name || '',
                             description: role.description || ''
@@ -1008,16 +1034,84 @@ document.addEventListener('DOMContentLoaded', function() {
             if (includesTopic && data.topic && Array.isArray(data.roles)) {
                 // テーマと役割が含まれる形式: {"topic": "テーマ", "roles": [{name, description}, ...]}
                 topic = data.topic;
-                roles = data.roles.map(role => ({
-                    name: role.name || '',
-                    description: role.description || ''
-                }));
+                roles = data.roles.map(role => {
+                    if (typeof role === 'string') {
+                        // 文字列の場合は、役割名と説明を抽出を試みる
+                        
+                        // 括弧による分割を試行: "役割名（説明）"
+                        const bracketMatch = role.match(/^(.+?)（(.+?)）$/);
+                        if (bracketMatch) {
+                            return {
+                                name: bracketMatch[1].trim(),
+                                description: bracketMatch[2].trim()
+                            };
+                        }
+                        
+                        // コロンによる分割を試行: "役割名: 説明"
+                        const colonParts = role.split(/[:：]/, 2);
+                        if (colonParts.length > 1) {
+                            return {
+                                name: colonParts[0].trim(),
+                                description: colonParts[1].trim()
+                            };
+                        }
+                        
+                        // 分割できない場合は役割名のみとして扱う
+                        return {
+                            name: role.trim(),
+                            description: ''
+                        };
+                    } else if (typeof role === 'object') {
+                        // オブジェクトの場合
+                        return {
+                            name: role.name || '',
+                            description: role.description || ''
+                        };
+                    }
+                    
+                    // それ以外の場合は空のオブジェクトを返す
+                    return { name: '', description: '' };
+                }).filter(role => role.name.trim() !== ''); // 名前が空の役割を除外
             } else if (Array.isArray(data)) {
-                // 役割のみの配列: [{name, description}, ...]
-                roles = data.map(role => ({
-                    name: role.name || '',
-                    description: role.description || ''
-                }));
+                // 役割のみの配列: [{name, description}, ...] または ["役割名（説明）", ...]
+                roles = data.map(role => {
+                    if (typeof role === 'string') {
+                        // 文字列の場合は、役割名と説明を抽出を試みる
+                        
+                        // 括弧による分割を試行: "役割名（説明）"
+                        const bracketMatch = role.match(/^(.+?)（(.+?)）$/);
+                        if (bracketMatch) {
+                            return {
+                                name: bracketMatch[1].trim(),
+                                description: bracketMatch[2].trim()
+                            };
+                        }
+                        
+                        // コロンによる分割を試行: "役割名: 説明"
+                        const colonParts = role.split(/[:：]/, 2);
+                        if (colonParts.length > 1) {
+                            return {
+                                name: colonParts[0].trim(),
+                                description: colonParts[1].trim()
+                            };
+                        }
+                        
+                        // 分割できない場合は役割名のみとして扱う
+                        return {
+                            name: role.trim(),
+                            description: ''
+                        };
+                    } else if (typeof role === 'object') {
+                        // オブジェクトの場合
+                        return {
+                            name: role.name || '',
+                            description: role.description || ''
+                        };
+                    }
+                    
+                    // それ以外の場合は空のオブジェクトを返す
+                    return { name: '', description: '' };
+                }).filter(role => role.name.trim() !== ''); // 名前が空の役割を除外
             } else if (typeof data === 'object') {
                 // その他のオブジェクト形式
                 throw new Error('サポートされていないJSON形式です。説明に記載された形式に従ってください。');
@@ -1236,14 +1330,22 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // 役割を入力フィールドに設定
             for (let i = 0; i < roles.length; i++) {
-                const roleText = `${roles[i].name}: ${roles[i].description}`;
+                const roleName = roles[i].name || '';
+                const roleDesc = roles[i].description || '';
+                
+                // 役割名と説明を組み合わせた表示用テキスト
+                const roleText = roleDesc ? `${roleName}: ${roleDesc}` : roleName;
+                
                 if (currentIndex < roleInputs.length) {
                     // 既存の入力フィールドを使用
                     roleInputs[currentIndex].value = roleText;
                     currentIndex++;
                 } else {
-                    // 新しい入力フィールドを追加
-                    addRoleInput(roleText);
+                    // 新しい入力フィールドを追加（オブジェクト形式で渡す）
+                    addRoleInput({
+                        name: roleName,
+                        description: roleDesc
+                    });
                 }
             }
             

@@ -64,70 +64,216 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 @app.route('/process-json-file', methods=['POST'])
 def process_json_file():
     """サーバー側でJSONファイルを処理する"""
-    import os
-    import json
-    import codecs
-    
-    if 'file' not in request.files:
-        return jsonify({'error': 'ファイルが選択されていません。'}), 400
-            
-    file = request.files['file']
-    
-    if file.filename == '':
-        return jsonify({'error': 'ファイルが選択されていません。'}), 400
-    
-    # 拡張子の確認
-    filename = file.filename
-    file_ext = os.path.splitext(filename)[1].lower()
-    
-    if file_ext != '.json':
-        return jsonify({'error': 'JSONファイル（.json）のみサポートしています。'}), 400
-    
-    # 複数のエンコーディングを試す
-    content = None
-    result = {'success': False, 'error': 'すべてのエンコーディングでの読み込みに失敗しました。'}
-    
-    # 一時ファイルとして保存
-    temp_path = os.path.join('/tmp', 'uploaded_json.json')
-    file.save(temp_path)
-    
-    # 複数のエンコーディングで試行
-    encodings = ['utf-8', 'shift-jis', 'euc-jp', 'cp932']
-    
-    for encoding in encodings:
-        try:
-            with codecs.open(temp_path, 'r', encoding=encoding) as f:
-                content = f.read()
-                
-            # JSONとして解析を試みる
-            data = json.loads(content)
-            
-            # 成功した場合
-            result = {
-                'success': True,
-                'encoding': encoding,
-                'data': data
-            }
-            
-            # 一つでも成功したら終了
-            break
-            
-        except UnicodeDecodeError:
-            # このエンコーディングでは読めなかった
-            continue
-        except json.JSONDecodeError as e:
-            # エンコーディングは正しいがJSONパース失敗
-            result = {
-                'success': False,
-                'error': f'JSONパースエラー: {str(e)}',
-                'encoding': encoding
-            }
-    
-    # 一時ファイルを削除
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
+    try:
+        import os
+        import json
+        import codecs
+        import re  # 正規表現を使用するために追加
         
-    return jsonify(result)
+        logger.info("Processing JSON file upload")
+        
+        if 'file' not in request.files:
+            logger.warning("No file part in request")
+            return jsonify({'success': False, 'error': 'ファイルが選択されていません。'}), 400
+                
+        file = request.files['file']
+        
+        if file.filename == '':
+            logger.warning("Empty filename")
+            return jsonify({'success': False, 'error': 'ファイルが選択されていません。'}), 400
+        
+        # 拡張子の確認
+        filename = file.filename
+        file_ext = os.path.splitext(filename)[1].lower()
+        
+        if file_ext != '.json':
+            logger.warning(f"Invalid file extension: {file_ext}")
+            return jsonify({'success': False, 'error': 'JSONファイル（.json）のみサポートしています。'}), 400
+        
+        logger.info(f"Processing JSON file: {filename}")
+        
+        # 複数のエンコーディングを試す
+        content = None
+        result = {'success': False, 'error': 'すべてのエンコーディングでの読み込みに失敗しました。'}
+        
+        # 一時ファイルとして保存
+        temp_path = os.path.join('/tmp', 'uploaded_json.json')
+        file.save(temp_path)
+        logger.info(f"File saved to temporary path: {temp_path}")
+        
+        # 複数のエンコーディングで試行
+        encodings = ['utf-8', 'utf-8-sig', 'shift-jis', 'euc-jp', 'cp932', 'iso-2022-jp']
+        
+        data = None
+        successful_encoding = None
+        
+        for encoding in encodings:
+            try:
+                logger.info(f"Trying encoding: {encoding}")
+                with codecs.open(temp_path, 'r', encoding=encoding) as f:
+                    content = f.read()
+                
+                # BOMを削除
+                if content.startswith('\ufeff'):
+                    content = content[1:]
+                    
+                # JSONとして解析を試みる
+                data = json.loads(content)
+                successful_encoding = encoding
+                logger.info(f"Successfully parsed JSON with encoding: {encoding}")
+                break
+                
+            except UnicodeDecodeError:
+                logger.warning(f"Failed to decode with {encoding}")
+                continue
+            except json.JSONDecodeError as e:
+                logger.warning(f"JSON decode error with {encoding}: {str(e)}")
+                continue
+        
+        # 一時ファイルを削除
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            logger.info("Temporary file removed")
+        
+        if data is None:
+            logger.error("Failed to parse JSON with any encoding")
+            return jsonify({'success': False, 'error': 'JSONファイルの解析に失敗しました。ファイル形式を確認してください。'}), 400
+        
+        # データの整形と検証
+        processed_data = data
+        
+        # データが配列の場合（役割のリストの場合）
+        if isinstance(data, list):
+            logger.info("Processing role array data")
+            # 各役割オブジェクトを検証し、name/descriptionフォーマットに変換
+            processed_roles = []
+            
+            for role_item in data:
+                if isinstance(role_item, str):
+                    # 文字列の場合は、役割名と説明を抽出を試みる
+                    logger.debug(f"Processing string role: {role_item[:50]}...")
+                    
+                    # 括弧による分割を試行: "役割名（説明）"
+                    match = re.match(r'^(.+?)（(.+?)）$', role_item)
+                    if match:
+                        role_name = match.group(1).strip()
+                        role_desc = match.group(2).strip()
+                        processed_roles.append({
+                            "name": role_name,
+                            "description": role_desc
+                        })
+                        continue
+                    
+                    # コロンによる分割を試行: "役割名: 説明"
+                    parts = re.split(r'[:：]', role_item, 1)
+                    if len(parts) > 1:
+                        role_name = parts[0].strip()
+                        role_desc = parts[1].strip()
+                        processed_roles.append({
+                            "name": role_name,
+                            "description": role_desc
+                        })
+                        continue
+                    
+                    # 分割できない場合は役割名のみとして扱う
+                    processed_roles.append({
+                        "name": role_item.strip(),
+                        "description": ""
+                    })
+                    
+                elif isinstance(role_item, dict):
+                    # 辞書の場合、name/descriptionキーを確認
+                    logger.debug(f"Processing dict role: {str(role_item)[:50]}...")
+                    role_name = role_item.get('name', '')
+                    role_desc = role_item.get('description', '')
+                    
+                    # nameキーがなく、他のキーがある場合は最初のキーをnameとして扱う
+                    if not role_name and len(role_item) > 0:
+                        first_key = next(iter(role_item))
+                        role_name = first_key
+                        role_desc = role_item[first_key]
+                    
+                    processed_roles.append({
+                        "name": role_name,
+                        "description": role_desc
+                    })
+            
+            processed_data = processed_roles
+            logger.info(f"Processed {len(processed_roles)} roles from array")
+        
+        # オブジェクトの場合（{topic: "...", roles: [...]}形式）
+        elif isinstance(data, dict) and 'roles' in data:
+            logger.info("Processing object with roles")
+            # トピックの取り出し
+            topic = data.get('topic', '')
+            roles = data.get('roles', [])
+            
+            # 役割の処理
+            processed_roles = []
+            
+            for role_item in roles:
+                if isinstance(role_item, str):
+                    # 文字列の場合は、役割名と説明を抽出を試みる
+                    logger.debug(f"Processing string role from object: {role_item[:50]}...")
+                    
+                    # 括弧による分割を試行: "役割名（説明）"
+                    match = re.match(r'^(.+?)（(.+?)）$', role_item)
+                    if match:
+                        role_name = match.group(1).strip()
+                        role_desc = match.group(2).strip()
+                        processed_roles.append({
+                            "name": role_name,
+                            "description": role_desc
+                        })
+                        continue
+                    
+                    # コロンによる分割を試行: "役割名: 説明"
+                    parts = re.split(r'[:：]', role_item, 1)
+                    if len(parts) > 1:
+                        role_name = parts[0].strip()
+                        role_desc = parts[1].strip()
+                        processed_roles.append({
+                            "name": role_name,
+                            "description": role_desc
+                        })
+                        continue
+                    
+                    # 分割できない場合は役割名のみとして扱う
+                    processed_roles.append({
+                        "name": role_item.strip(),
+                        "description": ""
+                    })
+                    
+                elif isinstance(role_item, dict):
+                    # 辞書の場合、name/descriptionキーを確認
+                    logger.debug(f"Processing dict role from object: {str(role_item)[:50]}...")
+                    role_name = role_item.get('name', '')
+                    role_desc = role_item.get('description', '')
+                    
+                    # nameキーがなく、他のキーがある場合は最初のキーをnameとして扱う
+                    if not role_name and len(role_item) > 0:
+                        first_key = next(iter(role_item))
+                        role_name = first_key
+                        role_desc = role_item[first_key]
+                    
+                    processed_roles.append({
+                        "name": role_name,
+                        "description": role_desc
+                    })
+            
+            processed_data = {
+                "topic": topic,
+                "roles": processed_roles
+            }
+            logger.info(f"Processed object with topic and {len(processed_roles)} roles")
+        
+        # 成功した場合、処理済みデータを返す
+        logger.info(f"Successfully processed JSON file with encoding: {successful_encoding}")
+        return jsonify({'success': True, 'data': processed_data})
+        
+    except Exception as e:
+        logger.error(f"Error in process_json_file: {str(e)}")
+        return jsonify({'success': False, 'error': f'ファイル処理中にエラーが発生しました: {str(e)}'}), 500
 
 @app.route('/')
 def index():
