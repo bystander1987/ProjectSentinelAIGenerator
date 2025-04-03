@@ -810,30 +810,76 @@ document.addEventListener('DOMContentLoaded', function() {
     // JSON形式の役割ファイルをパースする
     function parseRolesJson(content) {
         try {
+            // 文字化け対策：コンソールに内容を出力（デバッグ用）
+            console.log("Content first 100 chars:", content.substring(0, 100));
+            
             // エンコーディングの問題を検出して修正を試みる
             // BOMを削除
             const contentWithoutBOM = content.replace(/^\uFEFF/, '');
             
+            // 特殊な文字や改行、タブなどの処理
+            const sanitizedContent = contentWithoutBOM
+                .replace(/\r\n/g, '\n')  // Windows改行をUnix改行に統一
+                .replace(/\r/g, '\n')    // Mac改行をUnix改行に統一
+                .replace(/\t/g, ' ')     // タブをスペースに変換
+                .replace(/\\/g, '\\\\')  // バックスラッシュをエスケープ
+                .replace(/\\"/g, '\\"')  // 引用符をエスケープ
+                .trim();                 // 前後の空白を削除
+                
+            console.log("Sanitized content first 100 chars:", sanitizedContent.substring(0, 100));
+            
             // JSONパースを試みる
             let data;
             try {
-                data = JSON.parse(contentWithoutBOM);
+                // 最初に標準的なJSONパースを試みる
+                data = JSON.parse(sanitizedContent);
+                console.log("Standard JSON parse successful");
             } catch (e) {
                 // 日本語文字が原因でJSONパースに失敗した可能性がある場合の対応
                 console.error("Initial JSON parse failed:", e);
                 
-                // エスケープシーケンスを修正する可能性のある前処理
-                const preprocessed = contentWithoutBOM
-                    .replace(/\\\\/g, '\\')  // 二重バックスラッシュを修正
-                    .replace(/\\"/g, '"')    // エスケープされた引用符を修正
-                    .replace(/"/g, '"')      // 異なる引用符を標準化
-                    .replace(/"/g, '"');     // 異なる引用符を標準化
-                
                 try {
-                    data = JSON.parse(preprocessed);
+                    // JSONの形式を修正してみる
+                    let fixedContent = sanitizedContent;
+                    
+                    // トリプルバイト文字（日本語など）の処理
+                    const hasJapanese = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(fixedContent);
+                    
+                    if (hasJapanese) {
+                        console.log("Japanese characters detected, attempting specialized parsing");
+                        
+                        // 一度eval経由で評価してみる（セキュリティ的にはよくない方法だが、クライアントサイドでの一時的な処理として例外的に使用）
+                        try {
+                            // evalを安全に使うための工夫：JavaScriptオブジェクトリテラルとして評価
+                            fixedContent = fixedContent.replace(/([{,]\s*)(['"])?([a-zA-Z0-9_]+)(['"])?\s*:/g, '$1"$3":');
+                            const jsonStr = `(${fixedContent})`;
+                            data = eval(jsonStr);
+                            console.log("Eval-based parse successful");
+                        } catch (evalError) {
+                            console.error("Eval parse failed:", evalError);
+                            
+                            // 最後の手段：テキスト置換
+                            try {
+                                // 不正な引用符を修正
+                                fixedContent = sanitizedContent
+                                    .replace(/"/g, '"')        // スマートクォートを通常の引用符に変換
+                                    .replace(/"/g, '"')        // スマートクォートを通常の引用符に変換
+                                    .replace(/'/g, "'")        // スマートアポストロフィを通常のアポストロフィに変換
+                                    .replace(/'/g, "'");       // スマートアポストロフィを通常のアポストロフィに変換
+                                
+                                data = JSON.parse(fixedContent);
+                                console.log("Character replacement parse successful");
+                            } catch (e3) {
+                                console.error("All parsing attempts failed:", e3);
+                                throw new Error('JSONの解析に失敗しました。ファイル形式を確認してください。');
+                            }
+                        }
+                    } else {
+                        throw new Error('JSONの解析に失敗しました。ファイルが有効なJSON形式であることを確認してください。');
+                    }
                 } catch (e2) {
-                    console.error("Secondary JSON parse attempt failed:", e2);
-                    throw new Error('JSONの解析に失敗しました。ファイルが有効なJSON形式であることを確認してください。');
+                    console.error("All JSON parse attempts failed:", e2);
+                    throw new Error('JSONの解析に失敗しました。ファイルの形式とエンコーディングを確認してください。');
                 }
             }
             
