@@ -372,7 +372,10 @@ def provide_discussion_guidance(
     topic: str,
     instruction: str,
     language: str = "ja",
-    vector_store: Optional[FAISS] = None
+    vector_store: Optional[FAISS] = None,
+    model: str = "gemini-1.5-flash",
+    temperature: float = 0.7,
+    max_output_tokens: int = 1024
 ) -> Dict[str, str]:
     """
     議論に対して指示や提案を提供する
@@ -391,7 +394,8 @@ def provide_discussion_guidance(
     try:
         logger.info(f"Providing guidance for discussion on topic: {topic}")
         logger.info(f"Instruction: {instruction}")
-        llm = get_gemini_model(api_key, language)
+        llm = get_gemini_model(api_key, language, model, temperature, max_output_tokens)
+        logger.info(f"Using model: {model}, temperature: {temperature}, max_output_tokens: {max_output_tokens}")
         
         # 議論の内容を文字列にフォーマット
         discussion_text = f"ディスカッションテーマ: {topic}\n\n"
@@ -495,6 +499,7 @@ def continue_discussion(
     """
     try:
         logger.info(f"Continuing discussion on topic: {topic} for {num_additional_turns} more turns")
+        # 最初のモデル（文書分析用）
         llm = get_gemini_model(api_key, language)
         
         # 既存の議論をコピー

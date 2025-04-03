@@ -12,23 +12,27 @@ from langchain.prompts import PromptTemplate
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-def get_action_items_model(api_key: str, language: str = "ja"):
+def get_action_items_model(api_key: str, language: str = "ja", model: str = "gemini-2.0-flash-lite", temperature: float = 0.2, max_output_tokens: int = 1024):
     """
     Google Geminiモデルインスタンスを初期化して返す
     
     Args:
         api_key (str): Google Gemini API キー
         language (str): 出力言語 (デフォルト: "ja")
+        model (str): 使用するGeminiモデル名 (デフォルト: "gemini-2.0-flash-lite")
+        temperature (float): 生成の温度パラメータ (0.0-1.0) (デフォルト: 0.2)
+        max_output_tokens (int): 生成する最大トークン数 (デフォルト: 1024)
         
     Returns:
         ChatGoogleGenerativeAI: 初期化されたモデル
     """
     try:
+        logger.info(f"アクションアイテム生成用モデルの初期化: {model}, 温度: {temperature}, 最大トークン: {max_output_tokens}")
         model = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-lite",
+            model=model,
             google_api_key=api_key,
-            temperature=0.2,
-            max_output_tokens=1024,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
         )
         return model
     except Exception as e:
@@ -130,7 +134,10 @@ Please output in the following format for each role.
 def generate_action_items(
     api_key: str,
     discussion_data: List[Dict[str, str]],
-    language: str = "ja"
+    language: str = "ja",
+    model: str = "gemini-2.0-flash-lite",
+    temperature: float = 0.2,
+    max_output_tokens: int = 1024
 ) -> Dict[str, Any]:
     """
     議論データからアクションアイテムを生成する
@@ -139,13 +146,16 @@ def generate_action_items(
         api_key (str): Google Gemini API キー
         discussion_data (List[Dict[str, str]]): 議論データ
         language (str): 出力言語 (デフォルト: "ja")
+        model (str): 使用するGeminiモデル名 (デフォルト: "gemini-2.0-flash-lite")
+        temperature (float): 生成の温度パラメータ (0.0-1.0) (デフォルト: 0.2)
+        max_output_tokens (int): 生成する最大トークン数 (デフォルト: 1024)
         
     Returns:
         Dict[str, Any]: 生成されたアクションアイテムデータ
     """
     try:
-        logger.info("Initializing model for action items generation")
-        model = get_action_items_model(api_key, language)
+        logger.info(f"アクションアイテム生成処理を開始。モデル: {model}, 温度: {temperature}")
+        model = get_action_items_model(api_key, language, model, temperature, max_output_tokens)
         
         logger.info("Creating action items prompt")
         prompt = create_action_items_prompt(discussion_data, language)

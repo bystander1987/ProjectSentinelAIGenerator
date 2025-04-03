@@ -309,11 +309,20 @@ def upload_document():
             # 文書分析モジュールを動的にインポート
             from agents.document_analyzer import create_document_analysis_report
             
+            # モデル設定を取得
+            settings = request.json.get('settings', {})
+            model = settings.get('model', 'gemini-2.0-flash-lite')
+            temperature = float(settings.get('temperature', 0.0))
+            max_output_tokens = int(settings.get('max_output_tokens', 1024))
+            
             # 文書分析を実行
             analysis_report = create_document_analysis_report(
                 document_text=result['text_content'],
                 filename=filename,
-                api_key=api_key
+                api_key=api_key,
+                model=model,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens
             )
             
             if analysis_report and analysis_report.get('success'):
@@ -348,7 +357,13 @@ def upload_document():
                 # RAG用のデータを追加
                 if analysis_report.get('content_analysis', {}).get('success'):
                     from agents.document_analyzer import extract_key_information_for_rag
-                    rag_data = extract_key_information_for_rag(result['text_content'], api_key)
+                    rag_data = extract_key_information_for_rag(
+                        result['text_content'], 
+                        api_key,
+                        model=model,
+                        temperature=temperature,
+                        max_output_tokens=max_output_tokens
+                    )
                     if rag_data and rag_data.get('success'):
                         logger.info(f"RAG optimization data successfully extracted")
                         analysis_data['rag_data'] = {
@@ -694,9 +709,22 @@ def create_action_items():
             logger.error("No API key found for action items generation")
             return jsonify({'error': 'APIキーが設定されていません。GEMINI_API_KEYを環境変数に設定してください。'}), 500
         
+        # モデル設定の取得
+        settings = data.get('settings', {})
+        model = settings.get('model', 'gemini-2.0-flash-lite') 
+        temperature = float(settings.get('temperature', 0.2))
+        max_output_tokens = int(settings.get('maxOutputTokens', 1024))
+        
         # アクションアイテムを生成
         logger.info("Generating action items from discussion")
-        result = generate_action_items(api_key, discussion_data, language)
+        result = generate_action_items(
+            api_key, 
+            discussion_data, 
+            language,
+            model=model,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens
+        )
         
         if not result['success']:
             logger.error(f"Failed to generate action items: {result.get('error', 'Unknown error')}")
@@ -740,6 +768,12 @@ def summarize_discussion_endpoint():
         if not api_key:
             logger.error("No API key found for discussion summarization")
             return jsonify({'error': 'APIキーが設定されていません。GEMINI_API_KEYを環境変数に設定してください。'}), 500
+        
+        # モデル設定の取得
+        settings = data.get('settings', {})
+        model = settings.get('model', 'gemini-1.5-flash')
+        temperature = float(settings.get('temperature', 0.7))
+        max_output_tokens = int(settings.get('maxOutputTokens', 1024))
         
         # 要約を生成
         logger.info(f"Generating summary for discussion on topic: {topic}")
@@ -870,6 +904,12 @@ def provide_guidance_endpoint():
         logger.info(f"Providing guidance for discussion on topic: {topic}")
         logger.info(f"Instruction: {instruction}")
         
+        # モデル設定の取得
+        settings = data.get('settings', {})
+        model = settings.get('model', 'gemini-1.5-flash')
+        temperature = float(settings.get('temperature', 0.7))
+        max_output_tokens = int(settings.get('maxOutputTokens', 1024))
+        
         # 指導内容を生成
         guidance_result = provide_discussion_guidance(
             api_key=api_key,
@@ -877,7 +917,10 @@ def provide_guidance_endpoint():
             topic=enhanced_topic,
             instruction=instruction,
             language=language,
-            vector_store=vector_store
+            vector_store=vector_store,
+            model=model,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens
         )
         
         # 指導内容を含むシステムメッセージを生成

@@ -224,13 +224,16 @@ def extract_document_metadata(text: str, filename: str = "") -> Dict[str, Any]:
         logger.error(f"Error extracting document metadata: {str(e)}")
         return metadata
 
-def analyze_document_content(text: str, api_key: str) -> Dict[str, Any]:
+def analyze_document_content(text: str, api_key: str, model: str = "gemini-2.0-flash-lite", temperature: float = 0.0, max_output_tokens: int = 1024) -> Dict[str, Any]:
     """
     文書の内容を分析し、主要な情報、トピック、重要なポイントを抽出する
     
     Args:
         text: 文書テキスト
         api_key: Google Gemini API キー
+        model (str): 使用するGeminiモデル名 (デフォルト: "gemini-2.0-flash-lite")
+        temperature (float): 生成の温度パラメータ (0.0-1.0) (デフォルト: 0.0)
+        max_output_tokens (int): 生成する最大トークン数 (デフォルト: 1024)
         
     Returns:
         Dict: 文書内容の分析結果
@@ -263,11 +266,11 @@ def analyze_document_content(text: str, api_key: str) -> Dict[str, Any]:
             text_for_analysis = f"{head}\n...\n{middle}\n...\n{tail}"
             
         # Gemini モデルをセットアップ
-        model = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-lite",
+        llm = ChatGoogleGenerativeAI(
+            model=model,
             google_api_key=api_key,
-            temperature=0.0,
-            max_tokens=1024
+            temperature=temperature,
+            max_output_tokens=max_output_tokens
         )
         
         # プロンプトを作成（日本語に特化）
@@ -290,7 +293,7 @@ def analyze_document_content(text: str, api_key: str) -> Dict[str, Any]:
         
         # Gemini APIを呼び出す
         logger.info("Calling Gemini API for document content analysis")
-        response = model.invoke(prompt)
+        response = llm.invoke(prompt)
         analysis_text = response.content if hasattr(response, 'content') else str(response)
         
         # レスポンスをパースして構造化データに変換
@@ -343,7 +346,10 @@ def analyze_document_content(text: str, api_key: str) -> Dict[str, Any]:
 def create_document_analysis_report(document_text: str, 
                                   filename: str, 
                                   api_key: str,
-                                  language: str = "ja") -> Dict[str, Any]:
+                                  language: str = "ja",
+                                  model: str = "gemini-2.0-flash-lite",
+                                  temperature: float = 0.0,
+                                  max_output_tokens: int = 1024) -> Dict[str, Any]:
     """
     文書の総合的な分析レポートを作成する
     
@@ -352,6 +358,9 @@ def create_document_analysis_report(document_text: str,
         filename: ファイル名
         api_key: Google Gemini API キー
         language: 出力言語（デフォルト: 日本語）
+        model (str): 使用するGeminiモデル名 (デフォルト: "gemini-2.0-flash-lite")
+        temperature (float): 生成の温度パラメータ (0.0-1.0) (デフォルト: 0.0)
+        max_output_tokens (int): 生成する最大トークン数 (デフォルト: 1024)
         
     Returns:
         Dict: 分析レポート
@@ -379,7 +388,7 @@ def create_document_analysis_report(document_text: str,
         
         # 3. 内容の分析（APIを使用）
         logger.info(f"Analyzing content for document: {filename}")
-        report["content_analysis"] = analyze_document_content(document_text, api_key)
+        report["content_analysis"] = analyze_document_content(document_text, api_key, model, temperature, max_output_tokens)
         
         # 4. サマリーの作成
         if report["content_analysis"]["success"] and report["content_analysis"]["summary"]:
@@ -420,13 +429,16 @@ def create_document_analysis_report(document_text: str,
         report["error"] = error_msg
         return report
 
-def extract_key_information_for_rag(document_text: str, api_key: str) -> Dict[str, Any]:
+def extract_key_information_for_rag(document_text: str, api_key: str, model: str = "gemini-2.0-flash-lite", temperature: float = 0.0, max_output_tokens: int = 1024) -> Dict[str, Any]:
     """
     RAG向けに文書から重要情報を抽出し、検索性を高める構造化データを作成する
     
     Args:
         document_text: 文書テキスト
         api_key: Google Gemini API キー
+        model (str): 使用するGeminiモデル名 (デフォルト: "gemini-2.0-flash-lite")
+        temperature (float): 生成の温度パラメータ (0.0-1.0) (デフォルト: 0.0)
+        max_output_tokens (int): 生成する最大トークン数 (デフォルト: 1024)
         
     Returns:
         Dict: RAG向け構造化データ
@@ -494,7 +506,7 @@ def extract_key_information_for_rag(document_text: str, api_key: str) -> Dict[st
         
         # 3. 内容分析から重要概念を抽出
         if api_key:
-            content_analysis = analyze_document_content(document_text, api_key)
+            content_analysis = analyze_document_content(document_text, api_key, model, temperature, max_output_tokens)
             
             if content_analysis["success"]:
                 # 主要トピックを重要概念として追加
